@@ -36,7 +36,7 @@ return [
     ],
 
     'google_review_scraper' => [
-        'url' => rtrim((string) env('GOOGLE_REVIEW_SCRAPER_URL', 'http://localhost:3000'), '/'),
+        'url' => rtrim((string) env('GBP_API_BASE_URL', env('GOOGLE_REVIEW_SCRAPER_URL', 'http://localhost:3000')), '/'),
         'timeout' => (int) env('GOOGLE_REVIEW_SCRAPER_TIMEOUT', 180),
     ],
 

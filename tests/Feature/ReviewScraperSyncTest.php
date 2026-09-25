@@ -138,7 +138,8 @@ test('review controller checkHealth endpoint returns scraper online status', fun
     $user = User::factory()->create();
 
     Http::fake([
-        'http://localhost:3000/health' => Http::response(['status' => 'ok'], 200),
+        '*/health' => Http::response(['status' => 'ok'], 200),
+        '*/api/proxy/stats' => Http::response(['success' => true, 'data' => ['enabled' => true]], 200),
     ]);
 
     $response = $this->actingAs($user)->getJson(route('reviews.scraper-health'));
@@ -154,8 +155,8 @@ test('review controller startSync initiates scraping job', function (): void {
     ]);
 
     Http::fake([
-        'http://localhost:3000/health' => Http::response(['status' => 'ok'], 200),
-        'http://localhost:3000/api/scrape/jobs' => Http::response([
+        '*/health' => Http::response(['status' => 'ok'], 200),
+        '*/api/scrape/jobs' => Http::response([
             'success' => true,
             'jobId' => 'job-test-abc-999',
             'status' => 'queued',
@@ -182,7 +183,7 @@ test('review controller checkSyncStatus syncs results when job is completed', fu
     $dealer = Dealer::factory()->create();
 
     Http::fake([
-        'http://localhost:3000/api/scrape/jobs/job-xyz-completed' => Http::response([
+        '*/api/scrape/jobs/job-xyz-completed' => Http::response([
             'jobId' => 'job-xyz-completed',
             'status' => 'completed',
             'result' => [
@@ -233,13 +234,13 @@ test('reviews sync artisan command successfully executes and syncs reviews', fun
     ]);
 
     Http::fake([
-        'http://localhost:3000/health' => Http::response(['status' => 'ok'], 200),
-        'http://localhost:3000/api/scrape/jobs' => Http::response([
+        '*/health' => Http::response(['status' => 'ok'], 200),
+        '*/api/scrape/jobs' => Http::response([
             'success' => true,
             'jobId' => 'job-artisan-1',
             'status' => 'queued',
         ], 202),
-        'http://localhost:3000/api/scrape/jobs/job-artisan-1' => Http::response([
+        '*/api/scrape/jobs/job-artisan-1' => Http::response([
             'jobId' => 'job-artisan-1',
             'status' => 'completed',
             'result' => [

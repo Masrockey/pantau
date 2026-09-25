@@ -19,7 +19,7 @@ class GoogleReviewScraperService
 
     public function __construct(?string $baseUrl = null, ?int $timeout = null)
     {
-        $this->baseUrl = $baseUrl ?: (string) Config::get('services.google_review_scraper.url', 'http://localhost:3000');
+        $this->baseUrl = $baseUrl ?: (string) (Config::get('services.google_review_scraper.url') ?: env('GBP_API_BASE_URL', 'http://localhost:3000'));
         $this->baseUrl = rtrim($this->baseUrl, '/');
         $this->timeout = $timeout ?: (int) Config::get('services.google_review_scraper.timeout', 180);
     }
