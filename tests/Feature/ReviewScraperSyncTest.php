@@ -156,11 +156,6 @@ test('review controller startSync initiates scraping job', function (): void {
 
     Http::fake([
         '*/health' => Http::response(['status' => 'ok'], 200),
-        '*/api/scrape/jobs' => Http::response([
-            'success' => true,
-            'jobId' => 'job-test-abc-999',
-            'status' => 'queued',
-        ], 202),
     ]);
 
     $response = $this->actingAs($user)->postJson(route('reviews.sync.start'), [
@@ -172,10 +167,31 @@ test('review controller startSync initiates scraping job', function (): void {
     $response->assertOk()
         ->assertJson([
             'success' => true,
-            'jobId' => 'job-test-abc-999',
-            'status' => 'queued',
-            'dealerId' => $dealer->id,
+            'message' => 'Proses sinkronisasi di background server berhasil dimulai.',
+            'status' => [
+                'status' => 'starting',
+            ],
         ]);
+});
+
+test('review controller provides server progress, cancel, reset, and clear-logs', function (): void {
+    $user = User::factory()->create();
+
+    $progressRes = $this->actingAs($user)->getJson(route('reviews.sync.progress'));
+    $progressRes->assertOk()
+        ->assertJsonStructure(['status', 'logs']);
+
+    $cancelRes = $this->actingAs($user)->postJson(route('reviews.sync.cancel'));
+    $cancelRes->assertOk()
+        ->assertJson(['success' => true]);
+
+    $resetRes = $this->actingAs($user)->postJson(route('reviews.sync.reset'));
+    $resetRes->assertOk()
+        ->assertJson(['success' => true, 'status' => ['status' => 'idle']]);
+
+    $clearRes = $this->actingAs($user)->postJson(route('reviews.sync.clear-logs'));
+    $clearRes->assertOk()
+        ->assertJson(['success' => true]);
 });
 
 test('review controller checkSyncStatus syncs results when job is completed', function (): void {
@@ -307,4 +323,52 @@ test('scraper service properly constructs and saves direct Google Maps review ur
     $review = Review::where('dealer_id', $dealer->id)->where('nama_reviewer', 'Agus Supriyanto')->first();
     expect($review)->not->toBeNull();
     expect($review->google_review_url)->toBe('https://www.google.com/maps/reviews/@-8.5387744,118.4620428,785m/data=!3m2!1e3!4b1!4m6!14m5!1m4!2m3!1sChdDSUhNMG9nS0VJQ0FnTUR3OTVXbHJ3RRAB!2m1!1s0x0:0xa9e9fd5b7699d37f?entry=ttu');
+});
+
+test('reviews:sync-server artisan command executes server sync in background', function (): void {
+    $dealer = Dealer::factory()->create([
+        'kode_dealer' => 'DL-999',
+        'nama_dealer' => 'Dealer Sukses Jaya',
+        'link_google_maps' => 'https://maps.app.goo.gl/suksesjaya',
+    ]);
+
+    Http::fake([
+        '*/health' => Http::response(['status' => 'ok'], 200),
+        '*/api/scrape/jobs' => Http::response([
+            'success' => true,
+            'jobId' => 'job-server-sync-1',
+            'status' => 'queued',
+        ], 202),
+        '*/api/scrape/jobs/job-server-sync-1' => Http::response([
+            'jobId' => 'job-server-sync-1',
+            'status' => 'completed',
+            'result' => [
+                'data' => [
+                    'profile' => [
+                        'name' => 'Dealer Sukses Jaya',
+                        'rating' => 4.8,
+                        'reviewCount' => 120,
+                    ],
+                    'reviews' => [
+                        [
+                            'author' => 'Budi Santoso',
+                            'rating' => 5,
+                            'publishedAtDate' => '2026-09-25T10:00:00Z',
+                            'text' => 'Pelayanan ramah dan memuaskan.',
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+    ]);
+
+    $this->artisan('reviews:sync-server', ['--target' => (string) $dealer->id, '--limit' => 5, '--no-proxy' => true])
+        ->expectsOutputToContain('Menjalankan sinkronisasi ulasan Google Maps di server')
+        ->expectsOutputToContain('Proses sinkronisasi server selesai.')
+        ->assertSuccessful();
+
+    $this->assertDatabaseHas('reviews', [
+        'dealer_id' => $dealer->id,
+        'nama_reviewer' => 'Budi Santoso',
+    ]);
 });

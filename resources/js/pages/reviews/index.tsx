@@ -612,19 +612,21 @@ export default function ReviewsIndex({
                                 asChild
                                 className="shrink-0 gap-2 border-primary/40 text-primary hover:bg-primary/10"
                             >
-                                <Link href={reviewsRoute.sync.index()}>
+                                <Link href={reviewsRoute.sync.index.url()}>
                                     <RefreshCw className="size-4" />
                                     Sync Review
                                 </Link>
                             </Button>
                         )}
-                        <Button
-                            onClick={handleOpenCreate}
-                            className="shrink-0 gap-2"
-                        >
-                            <Plus className="size-4" />
-                            Tambah Review
-                        </Button>
+                        {canManageAll && (
+                            <Button
+                                onClick={handleOpenCreate}
+                                className="shrink-0 gap-2"
+                            >
+                                <Plus className="size-4" />
+                                Tambah Review
+                            </Button>
+                        )}
                     </div>
                 </div>
 

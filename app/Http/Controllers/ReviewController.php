@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateReviewRequest;
 use App\Models\Dealer;
 use App\Models\Review;
 use App\Services\GoogleReviewScraperService;
+use App\Services\SyncReviewServerService;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -118,14 +119,11 @@ class ReviewController extends Controller
     public function store(StoreReviewRequest $request): RedirectResponse
     {
         $user = $request->user();
-        $data = $request->validated();
-
         if (! $user->hasGlobalAccess()) {
-            if (! $user->dealer_id) {
-                abort(403, 'Akun Anda belum terhubung dengan dealer.');
-            }
-            $data['dealer_id'] = $user->dealer_id;
+            abort(403, 'Role dealer tidak diizinkan untuk menambah review manual.');
         }
+
+        $data = $request->validated();
 
         if (! ($data['respon_from_owner'] ?? false)) {
             $data['respon_from_owner'] = false;
@@ -194,7 +192,7 @@ class ReviewController extends Controller
     /**
      * Display the sync reviews page.
      */
-    public function syncPage(Request $request): Response
+    public function syncPage(Request $request, SyncReviewServerService $syncService): Response
     {
         $user = $request->user();
         if (! $user?->isSuperAdmin()) {
@@ -225,6 +223,8 @@ class ReviewController extends Controller
                 'dealers_without_maps' => $dealersWithoutMaps,
                 'total_reviews_db' => $totalReviewsInDb,
             ],
+            'serverStatus' => $syncService->getStatus(),
+            'serverLogs' => $syncService->getLogs(),
             'canManageAll' => true,
         ]);
     }
@@ -248,9 +248,9 @@ class ReviewController extends Controller
     }
 
     /**
-     * Start a background scraping job for a dealer via the Scraper API.
+     * Start a background scraping job on the server.
      */
-    public function startSync(Request $request, GoogleReviewScraperService $scraperService): JsonResponse
+    public function startSync(Request $request, GoogleReviewScraperService $scraperService, SyncReviewServerService $syncService): JsonResponse
     {
         $user = $request->user();
         if (! $user?->isSuperAdmin()) {
@@ -274,40 +274,119 @@ class ReviewController extends Controller
             ], 503);
         }
 
-        if ($request->input('dealer_id') === 'all') {
-            $allDealers = Dealer::orderBy('nama_dealer')->get(['id', 'kode_dealer', 'nama_dealer']);
+        $target = (string) $validated['dealer_id'];
+        $limit = (int) ($validated['max_reviews'] ?? 50);
+        $sort = (string) ($validated['sort_by'] ?? 'newest');
+        $useProxy = (bool) ($validated['use_proxy'] ?? true);
 
-            return response()->json([
-                'success' => true,
-                'isBulk' => true,
-                'dealers' => $allDealers,
-                'total' => $allDealers->count(),
-            ]);
-        }
-
-        $dealer = Dealer::findOrFail($validated['dealer_id']);
-
-        try {
-            $jobData = $scraperService->startScrapingJob(
-                dealer: $dealer,
-                maxReviews: (int) ($validated['max_reviews'] ?? 20),
-                sortBy: (string) ($validated['sort_by'] ?? 'newest'),
-                useProxy: (bool) ($validated['use_proxy'] ?? true),
-            );
-
-            return response()->json([
-                'success' => true,
-                'jobId' => $jobData['jobId'],
-                'status' => $jobData['status'],
-                'dealerId' => $dealer->id,
-                'dealerName' => $dealer->nama_dealer,
-            ]);
-        } catch (Exception $e) {
+        $currentStatus = $syncService->getStatus();
+        if (in_array($currentStatus['status'] ?? 'idle', ['starting', 'running'], true)) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage(),
-            ], 422);
+                'message' => 'Proses sinkronisasi di server sedang berjalan. Harap tunggu hingga selesai atau batalkan terlebih dahulu.',
+            ], 409);
         }
+
+        if ($target !== 'all') {
+            $dealer = Dealer::find($target);
+            if (! $dealer) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Showroom tidak ditemukan.',
+                ], 404);
+            }
+            if (empty($dealer->link_google_maps)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Dealer {$dealer->nama_dealer} belum memiliki link Google Maps.",
+                ], 422);
+            }
+        }
+
+        $syncService->launchBackgroundProcess($target, $limit, $sort, $useProxy);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Proses sinkronisasi di background server berhasil dimulai.',
+            'status' => $syncService->getStatus(),
+        ]);
+    }
+
+    /**
+     * Get the latest progress and logs from the server cache.
+     */
+    public function syncProgress(Request $request, SyncReviewServerService $syncService): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Hanya Super Admin yang dapat mengakses progres sinkronisasi.',
+            ], 403);
+        }
+
+        return response()->json([
+            'status' => $syncService->getStatus(),
+            'logs' => $syncService->getLogs(),
+        ]);
+    }
+
+    /**
+     * Request cancellation of the server sync process.
+     */
+    public function cancelSync(Request $request, SyncReviewServerService $syncService): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Hanya Super Admin yang dapat membatalkan sinkronisasi.',
+            ], 403);
+        }
+
+        $syncService->requestCancel();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Permintaan pembatalan sinkronisasi server telah dikirim.',
+            'status' => $syncService->getStatus(),
+        ]);
+    }
+
+    /**
+     * Reset the server sync status back to idle.
+     */
+    public function resetSync(Request $request, SyncReviewServerService $syncService): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Hanya Super Admin yang dapat mereset status sinkronisasi.',
+            ], 403);
+        }
+
+        $syncService->resetStatus();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Status monitoring sinkronisasi server berhasil direset.',
+            'status' => $syncService->getStatus(),
+        ]);
+    }
+
+    /**
+     * Clear all activity logs in server cache.
+     */
+    public function clearSyncLogs(Request $request, SyncReviewServerService $syncService): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Hanya Super Admin yang dapat membersihkan log sinkronisasi.',
+            ], 403);
+        }
+
+        $syncService->clearLogs();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Log aktivitas sinkronisasi di server berhasil dibersihkan.',
+            'logs' => $syncService->getLogs(),
+        ]);
     }
 
     /**

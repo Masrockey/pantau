@@ -50,21 +50,8 @@ interface SyncStats {
     total_reviews_db: number;
 }
 
-interface SyncPageProps {
-    dealers: SyncDealer[];
-    stats: SyncStats;
-    canManageAll?: boolean;
-}
-
-interface LogEntry {
-    id: string;
-    time: string;
-    type: 'info' | 'success' | 'warn' | 'error';
-    message: string;
-}
-
-interface SyncSessionData {
-    syncState: 'idle' | 'starting' | 'running' | 'completed' | 'failed' | 'cancelled';
+interface SyncServerStatus {
+    status: 'idle' | 'starting' | 'running' | 'completed' | 'failed' | 'cancelled';
     syncMessage: string;
     syncError?: string | null;
     progressPercent: number;
@@ -83,62 +70,24 @@ interface SyncSessionData {
         dealer_rating?: number;
         dealer_total_review?: number;
     } | null;
-    activeJob?: {
-        jobId: string;
-        dealerId: number | string;
-        dealerName: string;
-        startedAt: number;
-        maxReviews: number;
-    } | null;
+    startedAt?: number | null;
+    target?: string | null;
 }
 
-const STORAGE_KEY_LOGS = 'pantau_sync_logs_v1';
-const STORAGE_KEY_SESSION = 'pantau_sync_session_v1';
+interface SyncPageProps {
+    dealers: SyncDealer[];
+    stats: SyncStats;
+    serverStatus?: SyncServerStatus;
+    serverLogs?: LogEntry[];
+    canManageAll?: boolean;
+}
 
-const getStoredSession = (): SyncSessionData => {
-    if (typeof window === 'undefined') {
-        return {
-            syncState: 'idle',
-            syncMessage: '',
-            progressPercent: 0,
-            syncError: null,
-            bulkProgress: null,
-            syncResult: null,
-            activeJob: null,
-        };
-    }
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY_SESSION);
-        if (saved) {
-            return JSON.parse(saved);
-        }
-    } catch {
-        // ignore
-    }
-    return {
-        syncState: 'idle',
-        syncMessage: '',
-        progressPercent: 0,
-        syncError: null,
-        bulkProgress: null,
-        syncResult: null,
-        activeJob: null,
-    };
-};
-
-const getStoredLogs = (): LogEntry[] => {
-    if (typeof window === 'undefined') return [];
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY_LOGS);
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) return parsed;
-        }
-    } catch {
-        // ignore
-    }
-    return [];
-};
+interface LogEntry {
+    id: string;
+    time: string;
+    type: 'info' | 'success' | 'warn' | 'error';
+    message: string;
+}
 
 const selectClass =
     'h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:bg-background';
@@ -146,6 +95,8 @@ const selectClass =
 export default function SyncReviewsPage({
     dealers,
     stats,
+    serverStatus,
+    serverLogs = [],
     canManageAll = true,
 }: SyncPageProps) {
     // Health and proxy state
@@ -168,61 +119,76 @@ export default function SyncReviewsPage({
     const [sortBy, setSortBy] = useState<string>('newest');
     const [useProxy, setUseProxy] = useState<boolean>(true);
 
-    // Restored session from localStorage
-    const [initialSession] = useState<SyncSessionData>(getStoredSession);
-
-    // Execution & progress state
+    // Server-driven execution & progress state
     const [syncState, setSyncState] = useState<
         'idle' | 'starting' | 'running' | 'completed' | 'failed' | 'cancelled'
-    >(initialSession.syncState);
-    const [syncMessage, setSyncMessage] = useState<string>(initialSession.syncMessage);
-    const [syncError, setSyncError] = useState<string | null>(initialSession.syncError ?? null);
-    const [progressPercent, setProgressPercent] = useState<number>(initialSession.progressPercent);
-    const [bulkProgress, setBulkProgress] = useState(initialSession.bulkProgress ?? null);
-    const [syncResult, setSyncResult] = useState(initialSession.syncResult ?? null);
+    >(serverStatus?.status ?? 'idle');
+    const [syncMessage, setSyncMessage] = useState<string>(serverStatus?.syncMessage ?? '');
+    const [syncError, setSyncError] = useState<string | null>(serverStatus?.syncError ?? null);
+    const [progressPercent, setProgressPercent] = useState<number>(serverStatus?.progressPercent ?? 0);
+    const [bulkProgress, setBulkProgress] = useState(serverStatus?.bulkProgress ?? null);
+    const [syncResult, setSyncResult] = useState(serverStatus?.syncResult ?? null);
 
-    // Log terminal state with localStorage persistence
-    const [logs, setLogs] = useState<LogEntry[]>(getStoredLogs);
+    // Server activity logs
+    const [logs, setLogs] = useState<LogEntry[]>(serverLogs);
     const logContainerRef = useRef<HTMLDivElement>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const isCancelledRef = useRef(false);
 
     // Quick table search & filter
     const [tableSearch, setTableSearch] = useState('');
     const [filterMapsOnly, setFilterMapsOnly] = useState<'all' | 'with_maps' | 'without_maps'>('all');
 
-    // Persist session to localStorage
-    const saveSession = (data: Partial<SyncSessionData>) => {
-        if (typeof window === 'undefined') return;
-        try {
-            const current = getStoredSession();
-            const updated = { ...current, ...data };
-            localStorage.setItem(STORAGE_KEY_SESSION, JSON.stringify(updated));
-        } catch {
-            // ignore
+    // Polling function: connects to server cache
+    const startPolling = () => {
+        if (pollRef.current) {
+            clearInterval(pollRef.current);
         }
-    };
 
-    const addLog = (message: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
-        const now = new Date();
-        const time = now.toTimeString().split(' ')[0];
-        const newEntry: LogEntry = {
-            id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            time,
-            type,
-            message,
-        };
-        setLogs((prev) => {
-            const updated = [...prev, newEntry].slice(-300);
-            if (typeof window !== 'undefined') {
-                try {
-                    localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
-                } catch {
-                    // ignore
+        pollRef.current = setInterval(async () => {
+            try {
+                const res = await fetch(syncRoute.progress.url(), {
+                    headers: { Accept: 'application/json' },
+                });
+                if (!res.ok) return;
+
+                const data = await res.json();
+                const status: SyncServerStatus = data.status || {};
+                const sLogs: LogEntry[] = data.logs || [];
+
+                setSyncState(status.status);
+                setSyncMessage(status.syncMessage || '');
+                setSyncError(status.syncError ?? null);
+                setProgressPercent(status.progressPercent ?? 0);
+                setBulkProgress(status.bulkProgress ?? null);
+                setSyncResult(status.syncResult ?? null);
+                if (Array.isArray(sLogs)) {
+                    setLogs(sLogs);
                 }
+
+                if (status.status === 'completed') {
+                    if (pollRef.current) {
+                        clearInterval(pollRef.current);
+                        pollRef.current = null;
+                    }
+                    toast.success(status.syncMessage || 'Sinkronisasi ulasan selesai diproses di server.');
+                    router.reload({ only: ['dealers', 'stats'] });
+                } else if (status.status === 'failed') {
+                    if (pollRef.current) {
+                        clearInterval(pollRef.current);
+                        pollRef.current = null;
+                    }
+                    toast.error(status.syncError || 'Sinkronisasi server mengalami kegagalan.');
+                } else if (status.status === 'cancelled') {
+                    if (pollRef.current) {
+                        clearInterval(pollRef.current);
+                        pollRef.current = null;
+                    }
+                    toast.info(status.syncMessage || 'Sinkronisasi server dihentikan.');
+                }
+            } catch {
+                // Ignore transient network errors
             }
-            return updated;
-        });
+        }, 2000);
     };
 
     // Auto scroll logs
@@ -244,10 +210,8 @@ export default function SyncReviewsPage({
                 if (!silent) {
                     if (data.online) {
                         toast.success('Scraper service aktif & terhubung di port 3000');
-                        addLog('Scraper service aktif & terhubung normal.', 'success');
                     } else {
                         toast.error('Scraper service tidak merespon di port 3000');
-                        addLog('Scraper service tidak merespon di port 3000.', 'error');
                     }
                 }
             } else {
@@ -255,7 +219,6 @@ export default function SyncReviewsPage({
                 setProxyInfo(null);
                 if (!silent) {
                     toast.error('Gagal menghubungi scraper service');
-                    addLog('Gagal menghubungi scraper service.', 'error');
                 }
             }
         } catch {
@@ -263,145 +226,18 @@ export default function SyncReviewsPage({
             setProxyInfo(null);
             if (!silent) {
                 toast.error('Koneksi ke scraper service gagal');
-                addLog('Koneksi ke scraper service gagal dipanggil.', 'error');
             }
         } finally {
             setIsCheckingHealth(false);
         }
     };
 
-    // Reusable single job polling function
-    const startPollingJob = (
-        jobId: string,
-        dealerId: number | string,
-        dealerName: string,
-        initialPollCount = 0,
-    ) => {
-        if (pollRef.current) {
-            clearInterval(pollRef.current);
-        }
-
-        let pollCount = initialPollCount;
-        pollRef.current = setInterval(async () => {
-            pollCount++;
-            setProgressPercent((prev) => {
-                const next = Math.min(90, prev + 2);
-                saveSession({ progressPercent: next });
-                return next;
-            });
-
-            try {
-                const statusUrl = `${syncRoute.status.url({ jobId })}?dealer_id=${dealerId}`;
-                const statusRes = await fetch(statusUrl, {
-                    headers: { Accept: 'application/json' },
-                });
-                const statusData = await statusRes.json();
-
-                if (statusData.status === 'completed') {
-                    if (pollRef.current) {
-                        clearInterval(pollRef.current);
-                    }
-                    setProgressPercent(100);
-                    setSyncState('completed');
-
-                    const syncData = statusData.data || {};
-                    const resObj = {
-                        imported: syncData.imported ?? 0,
-                        updated: syncData.updated ?? 0,
-                        total_scraped: (syncData.imported ?? 0) + (syncData.updated ?? 0),
-                        dealer_nama: dealerName,
-                        dealer_rating: syncData.dealer_rating,
-                        dealer_total_review: syncData.dealer_total_review,
-                    };
-                    setSyncResult(resObj);
-
-                    const doneMsg = `Selesai! Berhasil mengimpor ${resObj.imported} ulasan baru dan memperbarui ${resObj.updated} ulasan.`;
-                    setSyncMessage(doneMsg);
-                    addLog(
-                        `[Selesai] ${dealerName}: ${resObj.imported} ulasan baru, ${resObj.updated} ulasan terupdate. Rating Google: ★ ${resObj.dealer_rating ?? '-'} (${resObj.dealer_total_review ?? '-'} ulasan)`,
-                        'success',
-                    );
-                    toast.success(doneMsg);
-
-                    saveSession({
-                        syncState: 'completed',
-                        syncMessage: doneMsg,
-                        progressPercent: 100,
-                        syncResult: resObj,
-                        activeJob: null,
-                    });
-
-                    router.reload({ only: ['dealers', 'stats'] });
-                } else if (statusData.status === 'failed') {
-                    if (pollRef.current) {
-                        clearInterval(pollRef.current);
-                    }
-                    setSyncState('failed');
-                    const failMsg =
-                        statusData.message || 'Scraping ulasan gagal diproses oleh service scraper.';
-                    setSyncError(failMsg);
-                    setSyncMessage(failMsg);
-                    addLog(`[Error] ${failMsg}`, 'error');
-                    toast.error(failMsg);
-
-                    saveSession({
-                        syncState: 'failed',
-                        syncMessage: failMsg,
-                        syncError: failMsg,
-                        activeJob: null,
-                    });
-                } else {
-                    if (pollCount % 3 === 0) {
-                        addLog(
-                            `Menunggu ekstraksi data ulasan (${pollCount * 2} detik berjalan)...`,
-                            'info',
-                        );
-                    }
-                }
-            } catch {
-                // Toleransi jaringan saat polling
-            }
-        }, 2000);
-    };
-
-    // On Mount: Check health and resume active job if page was refreshed while scraping
+    // On Mount: Check health and resume polling if server background job is running
     useEffect(() => {
         checkScraperHealth(true);
 
-        if (typeof window !== 'undefined') {
-            try {
-                const saved = localStorage.getItem(STORAGE_KEY_SESSION);
-                if (saved) {
-                    const session: SyncSessionData = JSON.parse(saved);
-                    if (session.syncState === 'running' && session.activeJob) {
-                        const elapsed = Date.now() - (session.activeJob.startedAt || 0);
-                        if (elapsed < 15 * 60 * 1000) {
-                            addLog(
-                                `[Lanjutan] Menyambung kembali pemantauan scraping job #${session.activeJob.jobId} (${session.activeJob.dealerName})...`,
-                                'info',
-                            );
-                            startPollingJob(
-                                session.activeJob.jobId,
-                                session.activeJob.dealerId,
-                                session.activeJob.dealerName,
-                                Math.floor(elapsed / 2000),
-                            );
-                        } else {
-                            setSyncState('failed');
-                            setSyncMessage('Proses scraping sebelumnya telah melewati batas waktu (timeout).');
-                            saveSession({ syncState: 'failed', activeJob: null });
-                        }
-                    } else if (session.syncState === 'running' && !session.activeJob) {
-                        setSyncState('cancelled');
-                        const msg = 'Halaman di-refresh saat proses sinkronisasi massal berlangsung.';
-                        setSyncMessage(msg);
-                        addLog(`[Perhatian] ${msg}`, 'warn');
-                        saveSession({ syncState: 'cancelled' });
-                    }
-                }
-            } catch {
-                // ignore
-            }
+        if (serverStatus?.status === 'starting' || serverStatus?.status === 'running') {
+            startPolling();
         }
 
         return () => {
@@ -411,42 +247,121 @@ export default function SyncReviewsPage({
         };
     }, []);
 
-    // Abort handler
-    const handleCancelSync = () => {
-        isCancelledRef.current = true;
-        if (pollRef.current) {
-            clearInterval(pollRef.current);
+    // Start background sync on server
+    const handleStartServerSync = async (dealerId: string, customLimit?: number) => {
+        if (scraperOnline === false) {
+            toast.error('Scraper service tidak aktif. Pastikan scraper di port 3000 berjalan.');
+            return;
         }
-        setSyncState('cancelled');
-        const msg = 'Permintaan pembatalan diterima. Menghentikan sinkronisasi...';
-        setSyncMessage(msg);
-        addLog(msg, 'warn');
-        toast.info('Sinkronisasi dihentikan.');
-        saveSession({
-            syncState: 'cancelled',
-            syncMessage: msg,
-            activeJob: null,
-        });
+
+        const actualLimit = customLimit ?? Math.max(1, Math.min(5000, Number(maxReviews) || 20));
+        const target = dealerId === 'all' ? 'all' : dealers.find((d) => String(d.id) === String(dealerId));
+
+        if (dealerId !== 'all') {
+            if (!target || typeof target !== 'object') {
+                toast.error('Data showroom tidak ditemukan.');
+                return;
+            }
+            if (!target.link_google_maps) {
+                toast.error(`Dealer "${target.nama_dealer}" belum memiliki link Google Maps.`);
+                return;
+            }
+        }
+
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+
+        setSyncState('starting');
+        setSyncMessage('Mengirim perintah sinkronisasi ke background server...');
+        setSyncError(null);
+        setSyncResult(null);
+        setProgressPercent(5);
+
+        try {
+            const res = await fetch(syncRoute.start.url(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    dealer_id: dealerId,
+                    max_reviews: actualLimit,
+                    sort_by: sortBy,
+                    use_proxy: useProxy,
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                const errMsg = data.message || 'Gagal memulai proses di background server.';
+                setSyncState('failed');
+                setSyncError(errMsg);
+                setSyncMessage(errMsg);
+                toast.error(errMsg);
+                return;
+            }
+
+            toast.success('Proses sinkronisasi telah berjalan di background server.');
+            startPolling();
+        } catch (err: unknown) {
+            const errStr = err instanceof Error ? err.message : 'Terjadi kendala koneksi ke server.';
+            setSyncState('failed');
+            setSyncError(errStr);
+            setSyncMessage(errStr);
+            toast.error(errStr);
+        }
+    };
+
+    // Form submit dispatcher
+    const handleStartSync = (e: React.FormEvent) => {
+        e.preventDefault();
+        handleStartServerSync(selectedDealerId);
+    };
+
+    // Abort handler
+    const handleCancelSync = async () => {
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+        try {
+            const res = await fetch(syncRoute.cancel.url(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+            });
+            if (res.ok) {
+                toast.info('Permintaan pembatalan telah dikirim ke server.');
+                setSyncMessage('Mengirim sinyal pembatalan ke server...');
+            }
+        } catch {
+            toast.error('Gagal mengirim sinyal pembatalan ke server.');
+        }
     };
 
     // Reset monitor status to idle
-    const handleResetMonitoring = () => {
-        setSyncState('idle');
-        setSyncMessage('');
-        setSyncError(null);
-        setProgressPercent(0);
-        setBulkProgress(null);
-        setSyncResult(null);
-        saveSession({
-            syncState: 'idle',
-            syncMessage: '',
-            syncError: null,
-            progressPercent: 0,
-            bulkProgress: null,
-            syncResult: null,
-            activeJob: null,
-        });
-        toast.info('Status monitoring direset ke Siap (Idle).');
+    const handleResetMonitoring = async () => {
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+        try {
+            await fetch(syncRoute.reset.url(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+            });
+            setSyncState('idle');
+            setSyncMessage('');
+            setSyncError(null);
+            setProgressPercent(0);
+            setBulkProgress(null);
+            setSyncResult(null);
+            toast.info('Status monitoring server direset ke Siap (Idle).');
+        } catch {
+            toast.error('Gagal mereset status monitoring di server.');
+        }
     };
 
     // Copy logs
@@ -456,309 +371,22 @@ export default function SyncReviewsPage({
         toast.success('Log aktivitas berhasil disalin ke clipboard');
     };
 
-    // Clear logs from memory & localStorage
-    const handleClearLogs = () => {
-        setLogs([]);
-        if (typeof window !== 'undefined') {
-            try {
-                localStorage.removeItem(STORAGE_KEY_LOGS);
-            } catch {
-                // ignore
-            }
-        }
-        addLog('Log aktivitas dibersihkan.', 'info');
-    };
-
-    // Single Dealer Sync Execution
-    const executeSingleDealerSync = async (dealerId: number | string, customLimit?: number) => {
-        const actualLimit = customLimit ?? Math.max(1, Math.min(5000, Number(maxReviews) || 20));
-        const target = dealers.find((d) => String(d.id) === String(dealerId));
-
-        if (!target) {
-            toast.error('Data showroom tidak ditemukan.');
-            return;
-        }
-
-        if (!target.link_google_maps) {
-            toast.error(`Dealer "${target.nama_dealer}" belum memiliki link Google Maps.`);
-            addLog(`Gagal: Dealer "${target.nama_dealer}" belum memiliki link Google Maps.`, 'error');
-            return;
-        }
-
-        setSyncState('starting');
-        setSyncError(null);
-        setSyncResult(null);
-        setBulkProgress(null);
-        setProgressPercent(10);
-        isCancelledRef.current = false;
-
-        const csrfToken =
-            (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
-
-        const startMsg = `Memulai scraping Google Review untuk ${target.kode_dealer} - ${target.nama_dealer} (Maks ${actualLimit} ulasan)...`;
-        setSyncMessage(startMsg);
-        addLog(startMsg, 'info');
-
-        saveSession({
-            syncState: 'starting',
-            syncMessage: startMsg,
-            syncError: null,
-            syncResult: null,
-            bulkProgress: null,
-            progressPercent: 10,
-            activeJob: null,
-        });
-
+    // Clear logs from server
+    const handleClearLogs = async () => {
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
         try {
-            const startRes = await fetch(syncRoute.start.url(), {
+            await fetch(syncRoute.clearLogs.url(), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': csrfToken,
                     Accept: 'application/json',
                 },
-                body: JSON.stringify({
-                    dealer_id: target.id,
-                    max_reviews: actualLimit,
-                    sort_by: sortBy,
-                    use_proxy: useProxy,
-                }),
             });
-
-            const startData = await startRes.json();
-            if (!startRes.ok || !startData.success) {
-                const errMsg = startData.message || 'Gagal memulai scraping review.';
-                setSyncState('failed');
-                setSyncError(errMsg);
-                setSyncMessage(errMsg);
-                addLog(`[Error] ${errMsg}`, 'error');
-                toast.error(errMsg);
-                saveSession({
-                    syncState: 'failed',
-                    syncError: errMsg,
-                    syncMessage: errMsg,
-                    activeJob: null,
-                });
-                return;
-            }
-
-            const jobId = startData.jobId;
-            setSyncState('running');
-            setProgressPercent(30);
-            const runMsg = `Job scraper #${jobId} diterima. Browser Playwright sedang membuka halaman ulasan Google Maps...`;
-            setSyncMessage(runMsg);
-            addLog(runMsg, 'info');
-
-            saveSession({
-                syncState: 'running',
-                syncMessage: runMsg,
-                progressPercent: 30,
-                activeJob: {
-                    jobId,
-                    dealerId: target.id,
-                    dealerName: target.nama_dealer,
-                    startedAt: Date.now(),
-                    maxReviews: actualLimit,
-                },
-            });
-
-            startPollingJob(jobId, target.id, target.nama_dealer);
-        } catch (err: unknown) {
-            const errStr = err instanceof Error ? err.message : 'Terjadi kendala koneksi ke server.';
-            setSyncState('failed');
-            setSyncError(errStr);
-            setSyncMessage(errStr);
-            addLog(`[Network Error] ${errStr}`, 'error');
-            toast.error(errStr);
-            saveSession({
-                syncState: 'failed',
-                syncError: errStr,
-                syncMessage: errStr,
-                activeJob: null,
-            });
-        }
-    };
-
-    // Bulk All Dealers Sync Execution
-    const executeBulkSync = async () => {
-        const targetDealers = dealers.filter((d) => Boolean(d.link_google_maps));
-        if (targetDealers.length === 0) {
-            toast.error('Tidak ada showroom dengan link Google Maps yang siap disinkronkan.');
-            addLog('Tidak ada showroom dengan link Google Maps yang valid.', 'error');
-            return;
-        }
-
-        setSyncState('running');
-        setSyncError(null);
-        setSyncResult(null);
-        isCancelledRef.current = false;
-
-        const csrfToken =
-            (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
-
-        let totalImported = 0;
-        let totalUpdated = 0;
-        let processedCount = 0;
-
-        const actualLimit = Math.max(1, Math.min(5000, Number(maxReviews) || 20));
-
-        addLog(
-            `Memulai sinkronisasi massal untuk ${targetDealers.length} showroom (Limit: ${actualLimit} ulasan per showroom)...`,
-            'info',
-        );
-
-        saveSession({
-            syncState: 'running',
-            syncMessage: 'Memulai sinkronisasi massal...',
-            syncError: null,
-            syncResult: null,
-            progressPercent: 0,
-            activeJob: null,
-        });
-
-        for (let i = 0; i < targetDealers.length; i++) {
-            if (isCancelledRef.current) {
-                addLog('Sinkronisasi massal dibatalkan oleh pengguna.', 'warn');
-                break;
-            }
-
-            const d = targetDealers[i];
-            const currentPct = Math.round(((i) / targetDealers.length) * 100);
-            setProgressPercent(currentPct);
-
-            const currentBulk = {
-                current: i + 1,
-                total: targetDealers.length,
-                currentDealerName: `${d.kode_dealer} - ${d.nama_dealer}`,
-                currentImported: totalImported,
-                currentUpdated: totalUpdated,
-            };
-            setBulkProgress(currentBulk);
-
-            const stepMsg = `[${i + 1}/${targetDealers.length}] Memproses ${d.nama_dealer}...`;
-            setSyncMessage(stepMsg);
-            addLog(stepMsg, 'info');
-
-            saveSession({
-                syncState: 'running',
-                progressPercent: currentPct,
-                syncMessage: stepMsg,
-                bulkProgress: currentBulk,
-            });
-
-            try {
-                const startRes = await fetch(syncRoute.start.url(), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken,
-                        Accept: 'application/json',
-                    },
-                    body: JSON.stringify({
-                        dealer_id: d.id,
-                        max_reviews: actualLimit,
-                        sort_by: sortBy,
-                        use_proxy: useProxy,
-                    }),
-                });
-
-                const startData = await startRes.json();
-                if (!startRes.ok || !startData.success) {
-                    addLog(`Lewati ${d.nama_dealer}: ${startData.message || 'Scraper menolak permintaan'}`, 'warn');
-                    continue;
-                }
-
-                const jobId = startData.jobId;
-                let isCompleted = false;
-                let pollCycles = 0;
-
-                while (!isCompleted && pollCycles < 90 && !isCancelledRef.current) {
-                    await new Promise((r) => setTimeout(r, 2000));
-                    pollCycles++;
-
-                    const statusUrl = `${syncRoute.status.url({ jobId })}?dealer_id=${d.id}`;
-                    const statusRes = await fetch(statusUrl, {
-                        headers: { Accept: 'application/json' },
-                    });
-                    const statusData = await statusRes.json();
-
-                    if (statusData.status === 'completed') {
-                        isCompleted = true;
-                        const syncData = statusData.data || {};
-                        const imp = syncData.imported || 0;
-                        const upd = syncData.updated || 0;
-                        totalImported += imp;
-                        totalUpdated += upd;
-                        processedCount++;
-
-                        const updatedBulk = {
-                            current: i + 1,
-                            total: targetDealers.length,
-                            currentDealerName: `${d.kode_dealer} - ${d.nama_dealer}`,
-                            currentImported: totalImported,
-                            currentUpdated: totalUpdated,
-                        };
-                        setBulkProgress(updatedBulk);
-
-                        saveSession({
-                            bulkProgress: updatedBulk,
-                        });
-
-                        addLog(
-                            `[Berhasil] ${d.nama_dealer}: +${imp} ulasan baru, ${upd} terupdate.`,
-                            'success',
-                        );
-                    } else if (statusData.status === 'failed') {
-                        isCompleted = true;
-                        addLog(`[Gagal] ${d.nama_dealer}: ${statusData.message || 'Scraping gagal'}`, 'warn');
-                    }
-                }
-            } catch (err: unknown) {
-                const errStr = err instanceof Error ? err.message : 'Error koneksi';
-                addLog(`Kendala koneksi pada ${d.nama_dealer}: ${errStr}`, 'warn');
-            }
-        }
-
-        setProgressPercent(100);
-        const finalState = isCancelledRef.current ? 'cancelled' : 'completed';
-        setSyncState(finalState);
-        const finalMsg = isCancelledRef.current
-            ? `Sinkronisasi dihentikan. Berhasil memproses ${processedCount} dari ${targetDealers.length} showroom.`
-            : `Selesai seluruhnya! Berhasil memproses ${processedCount} showroom. Total +${totalImported} ulasan baru, ${totalUpdated} ulasan terupdate.`;
-        setSyncMessage(finalMsg);
-        const finalResult = {
-            imported: totalImported,
-            updated: totalUpdated,
-            total_scraped: totalImported + totalUpdated,
-            dealer_nama: `Semua Showroom (${processedCount} selesai)`,
-        };
-        setSyncResult(finalResult);
-
-        saveSession({
-            syncState: finalState,
-            syncMessage: finalMsg,
-            progressPercent: 100,
-            syncResult: finalResult,
-            activeJob: null,
-        });
-
-        addLog(finalMsg, isCancelledRef.current ? 'warn' : 'success');
-        toast.success(finalMsg);
-        router.reload({ only: ['dealers', 'stats'] });
-    };
-
-    // Form submit dispatcher
-    const handleStartSync = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (scraperOnline === false) {
-            toast.error('Scraper service tidak aktif. Mohon jalankan scraper terlebih dahulu.');
-            return;
-        }
-
-        if (selectedDealerId === 'all') {
-            executeBulkSync();
-        } else {
-            executeSingleDealerSync(selectedDealerId);
+            setLogs([]);
+            toast.success('Log aktivitas di server dibersihkan.');
+        } catch {
+            toast.error('Gagal membersihkan log di server.');
         }
     };
 
@@ -814,7 +442,7 @@ export default function SyncReviewsPage({
                             Cek Scraper
                         </Button>
                         <Button variant="outline" size="sm" asChild className="gap-2">
-                            <Link href={reviewsRoute.index()}>
+                            <Link href={reviewsRoute.index.url()}>
                                 <ArrowLeft className="size-3.5" />
                                 Lihat Review
                             </Link>
@@ -890,6 +518,15 @@ export default function SyncReviewsPage({
                         >
                             {scraperOnline ? 'Port 3000 OK' : 'Port 3000 Down'}
                         </Badge>
+                    </div>
+                </div>
+
+                {/* Server Background Process Guarantee Banner */}
+                <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-xs text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/20 dark:text-blue-300">
+                    <Info className="size-4 shrink-0 text-blue-500" />
+                    <div>
+                        <span className="font-semibold">Server Background Process: </span>
+                        Proses scraping berjalan mandiri di latar belakang server. Jika browser ditutup atau PC dimatikan, proses tetap berjalan tanpa terputus dan progres dapat dipantau secara real-time dari PC atau perangkat mana saja.
                     </div>
                 </div>
 
@@ -1507,7 +1144,7 @@ export default function SyncReviewsPage({
                                                         disabled={!d.link_google_maps || isRunning}
                                                         onClick={() => {
                                                             setSelectedDealerId(String(d.id));
-                                                            executeSingleDealerSync(d.id);
+                                                            handleStartServerSync(String(d.id));
                                                         }}
                                                         className="h-7 text-xs gap-1"
                                                     >

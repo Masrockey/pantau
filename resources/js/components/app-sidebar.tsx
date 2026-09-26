@@ -20,21 +20,24 @@ import syncRoute from '@/routes/reviews/sync';
 import users from '@/routes/users';
 import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
+const platformNavItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: dashboard(),
         icon: LayoutGrid,
     },
     {
-        title: 'Dealer',
-        href: dealers.index(),
-        icon: Building2,
-    },
-    {
         title: 'Review',
         href: reviews.index(),
         icon: Star,
+    },
+];
+
+const managementNavItems: NavItem[] = [
+    {
+        title: 'Dealer',
+        href: dealers.index(),
+        icon: Building2,
     },
     {
         title: 'Sync Review',
@@ -54,7 +57,7 @@ export function AppSidebar() {
     const page = usePage<{ auth?: { user?: { role?: string } } }>();
     const isSuperAdmin = page.props?.auth?.user?.role === 'super_admin';
 
-    const visibleNavItems = mainNavItems.filter((item) => {
+    const visibleManagementItems = managementNavItems.filter((item) => {
         if (item.title === 'Sync Review') {
             return isSuperAdmin;
         }
@@ -76,7 +79,8 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={visibleNavItems} />
+                <NavMain items={platformNavItems} label="Platform" />
+                <NavMain items={visibleManagementItems} label="Management" />
             </SidebarContent>
 
             <SidebarFooter>

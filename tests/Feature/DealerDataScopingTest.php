@@ -89,24 +89,19 @@ test('dealer user only sees reviews from their own dealer', function (): void {
         );
 });
 
-test('dealer user creating review automatically binds to their dealer', function (): void {
+test('dealer user cannot create review', function (): void {
     $dealerA = Dealer::factory()->create();
-    $dealerB = Dealer::factory()->create();
     $userA = User::factory()->dealer()->forDealer($dealerA)->create();
 
-    $response = $this->actingAs($userA)->post(route('reviews.store'), [
-        'dealer_id' => $dealerB->id, // Attempting to use dealerB
-        'nama_reviewer' => 'Pelanggan Alpha',
-        'tanggal_publish_review' => '2026-09-26',
-        'star_rate' => 5,
-        'review' => 'Pelayanan ramah dan cepat!',
-    ]);
-
-    $response->assertRedirect(route('reviews.index'));
-    $this->assertDatabaseHas('reviews', [
-        'nama_reviewer' => 'Pelanggan Alpha',
-        'dealer_id' => $dealerA->id, // Forced to dealerA
-    ]);
+    $this->actingAs($userA)
+        ->post(route('reviews.store'), [
+            'dealer_id' => $dealerA->id,
+            'nama_reviewer' => 'Pelanggan Alpha',
+            'tanggal_publish_review' => '2026-09-26',
+            'star_rate' => 5,
+            'review' => 'Pelayanan ramah dan cepat!',
+        ])
+        ->assertForbidden();
 });
 
 test('dealer user cannot update or delete any review', function (): void {
