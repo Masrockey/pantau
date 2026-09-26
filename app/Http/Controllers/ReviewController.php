@@ -192,10 +192,55 @@ class ReviewController extends Controller
     }
 
     /**
+     * Display the sync reviews page.
+     */
+    public function syncPage(Request $request): Response
+    {
+        $user = $request->user();
+        if (! $user?->isSuperAdmin()) {
+            abort(403, 'Hanya Super Admin yang dapat mengakses halaman Sync Review.');
+        }
+
+        $dealers = Dealer::query()
+            ->withCount('reviews')
+            ->orderBy('nama_dealer')
+            ->get([
+                'id',
+                'kode_dealer',
+                'nama_dealer',
+                'link_google_maps',
+                'star_rate',
+                'total_review',
+            ]);
+
+        $dealersWithMaps = $dealers->filter(fn ($d): bool => ! empty($d->link_google_maps))->count();
+        $dealersWithoutMaps = $dealers->count() - $dealersWithMaps;
+        $totalReviewsInDb = (int) $dealers->sum('reviews_count');
+
+        return Inertia::render('reviews/sync', [
+            'dealers' => $dealers,
+            'stats' => [
+                'total_dealers' => $dealers->count(),
+                'dealers_with_maps' => $dealersWithMaps,
+                'dealers_without_maps' => $dealersWithoutMaps,
+                'total_reviews_db' => $totalReviewsInDb,
+            ],
+            'canManageAll' => true,
+        ]);
+    }
+
+    /**
      * Check if the Google Review scraper API service is online.
      */
-    public function checkHealth(GoogleReviewScraperService $scraperService): JsonResponse
+    public function checkHealth(Request $request, GoogleReviewScraperService $scraperService): JsonResponse
     {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'online' => false,
+                'message' => 'Hanya Super Admin yang dapat mengakses service ini.',
+            ], 403);
+        }
+
         return response()->json([
             'online' => $scraperService->isHealthy(),
             'proxy' => $scraperService->getProxyStats(),
@@ -207,9 +252,17 @@ class ReviewController extends Controller
      */
     public function startSync(Request $request, GoogleReviewScraperService $scraperService): JsonResponse
     {
+        $user = $request->user();
+        if (! $user?->isSuperAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hanya Super Admin yang dapat melakukan sinkronisasi ulasan Google Maps.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'dealer_id' => ['required'],
-            'max_reviews' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'max_reviews' => ['nullable', 'integer', 'min:1', 'max:5000'],
             'sort_by' => ['nullable', 'string', 'in:newest,highest,lowest,relevant'],
             'use_proxy' => ['nullable', 'boolean'],
         ]);
@@ -219,23 +272,6 @@ class ReviewController extends Controller
                 'success' => false,
                 'message' => 'Service Scraper API di port 3000 tidak aktif atau tidak dapat dihubungi. Pastikan service scraper berjalan.',
             ], 503);
-        }
-
-        $user = $request->user();
-        $isGlobal = $user?->hasGlobalAccess() ?? false;
-
-        if (! $isGlobal && $request->input('dealer_id') === 'all') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Anda tidak memiliki izin untuk menarik review semua dealer.',
-            ], 403);
-        }
-
-        if (! $isGlobal && (int) $request->input('dealer_id') !== (int) $user?->dealer_id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Anda hanya dapat menarik review untuk dealer Anda sendiri.',
-            ], 403);
         }
 
         if ($request->input('dealer_id') === 'all') {
@@ -279,17 +315,17 @@ class ReviewController extends Controller
      */
     public function checkSyncStatus(Request $request, string $jobId, GoogleReviewScraperService $scraperService): JsonResponse
     {
+        $user = $request->user();
+        if (! $user?->isSuperAdmin()) {
+            return response()->json([
+                'status' => 'failed',
+                'message' => 'Hanya Super Admin yang dapat mengecek status sinkronisasi.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'dealer_id' => ['required', 'exists:dealers,id'],
         ]);
-
-        $user = $request->user();
-        if (! $user?->hasGlobalAccess() && (int) $validated['dealer_id'] !== (int) $user?->dealer_id) {
-            return response()->json([
-                'status' => 'failed',
-                'message' => 'Anda tidak memiliki akses ke dealer ini.',
-            ], 403);
-        }
 
         try {
             $statusData = $scraperService->getJobStatus($jobId);

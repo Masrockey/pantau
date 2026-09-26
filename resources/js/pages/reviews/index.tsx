@@ -1,4 +1,4 @@
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     AlertCircle,
     Calendar,
@@ -63,6 +63,9 @@ export default function ReviewsIndex({
     filters,
     canManageAll = true,
 }: ReviewsIndexProps) {
+    const page = usePage<{ auth?: { user?: { role?: string } } }>();
+    const isSuperAdmin = page.props?.auth?.user?.role === 'super_admin';
+
     const [search, setSearch] = useState(filters.search || '');
     const [dealerFilter, setDealerFilter] = useState(filters.dealer_id || '');
     const [starFilter, setStarFilter] = useState(filters.star_rate || '');
@@ -603,14 +606,18 @@ export default function ReviewsIndex({
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={() => handleOpenSync()}
-                            className="shrink-0 gap-2 border-primary/40 text-primary hover:bg-primary/10"
-                        >
-                            <RefreshCw className="size-4" />
-                            Tarik Google Review
-                        </Button>
+                        {isSuperAdmin && (
+                            <Button
+                                variant="outline"
+                                asChild
+                                className="shrink-0 gap-2 border-primary/40 text-primary hover:bg-primary/10"
+                            >
+                                <Link href={reviewsRoute.sync.index()}>
+                                    <RefreshCw className="size-4" />
+                                    Sync Review
+                                </Link>
+                            </Button>
+                        )}
                         <Button
                             onClick={handleOpenCreate}
                             className="shrink-0 gap-2"

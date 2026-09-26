@@ -73,7 +73,7 @@ class GoogleReviewScraperService
     {
         $payload = [
             'type' => 'full',
-            'maxReviews' => max(1, min(1000, $maxReviews)),
+            'maxReviews' => max(1, min(5000, $maxReviews)),
             'personalData' => true,
             'language' => 'id',
             'sortBy' => in_array($sortBy, ['newest', 'highest', 'lowest', 'relevant'], true) ? $sortBy : 'newest',

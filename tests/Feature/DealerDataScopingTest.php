@@ -288,3 +288,71 @@ test('super admin and main dealer have global access across all dealers and revi
             ->has('reviews.data', 2)
         );
 });
+
+test('guest is redirected from reviews sync page', function (): void {
+    $this->get(route('reviews.sync.index'))
+        ->assertRedirect(route('login'));
+});
+
+test('dealer user is forbidden from accessing reviews sync page', function (): void {
+    $dealerA = Dealer::factory()->create();
+    $userA = User::factory()->dealer()->forDealer($dealerA)->create();
+
+    $this->actingAs($userA)
+        ->get(route('reviews.sync.index'))
+        ->assertForbidden();
+});
+
+test('main dealer user is forbidden from accessing reviews sync page', function (): void {
+    $mainDealer = User::factory()->mainDealer()->create();
+
+    $this->actingAs($mainDealer)
+        ->get(route('reviews.sync.index'))
+        ->assertForbidden();
+});
+
+test('super admin can access reviews sync page with all dealers', function (): void {
+    $dealerA = Dealer::factory()->create([
+        'nama_dealer' => 'Dealer Alpha',
+        'link_google_maps' => 'https://maps.google.com/alpha',
+    ]);
+    $dealerB = Dealer::factory()->create([
+        'nama_dealer' => 'Dealer Beta',
+        'link_google_maps' => null,
+    ]);
+
+    Review::factory()->forDealer($dealerA)->count(3)->create();
+    Review::factory()->forDealer($dealerB)->count(2)->create();
+
+    $superAdmin = User::factory()->superAdmin()->create();
+
+    $this->actingAs($superAdmin)->get(route('reviews.sync.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('reviews/sync')
+            ->where('canManageAll', true)
+            ->has('dealers', 2)
+            ->where('stats.total_dealers', 2)
+            ->where('stats.dealers_with_maps', 1)
+            ->where('stats.dealers_without_maps', 1)
+            ->where('stats.total_reviews_db', 5)
+        );
+});
+
+test('non super admin cannot trigger scraping startSync', function (): void {
+    $dealer = Dealer::factory()->create();
+    $dealerUser = User::factory()->dealer()->forDealer($dealer)->create();
+    $mainDealer = User::factory()->mainDealer()->create();
+
+    $this->actingAs($dealerUser)
+        ->postJson(route('reviews.sync.start'), [
+            'dealer_id' => $dealer->id,
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($mainDealer)
+        ->postJson(route('reviews.sync.start'), [
+            'dealer_id' => $dealer->id,
+        ])
+        ->assertForbidden();
+});

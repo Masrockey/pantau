@@ -1,5 +1,5 @@
-import { Link } from '@inertiajs/react';
-import { Building2, LayoutGrid, Star, Users } from 'lucide-react';
+import { Link, usePage } from '@inertiajs/react';
+import { Building2, LayoutGrid, RefreshCw, Star, Users } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -16,6 +16,7 @@ import {
 import { dashboard } from '@/routes';
 import dealers from '@/routes/dealers';
 import reviews from '@/routes/reviews';
+import syncRoute from '@/routes/reviews/sync';
 import users from '@/routes/users';
 import type { NavItem } from '@/types';
 
@@ -36,6 +37,11 @@ const mainNavItems: NavItem[] = [
         icon: Star,
     },
     {
+        title: 'Sync Review',
+        href: syncRoute.index(),
+        icon: RefreshCw,
+    },
+    {
         title: 'User',
         href: users.index(),
         icon: Users,
@@ -45,6 +51,16 @@ const mainNavItems: NavItem[] = [
 const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
+    const page = usePage<{ auth?: { user?: { role?: string } } }>();
+    const isSuperAdmin = page.props?.auth?.user?.role === 'super_admin';
+
+    const visibleNavItems = mainNavItems.filter((item) => {
+        if (item.title === 'Sync Review') {
+            return isSuperAdmin;
+        }
+        return true;
+    });
+
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -60,7 +76,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain items={visibleNavItems} />
             </SidebarContent>
 
             <SidebarFooter>
