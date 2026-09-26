@@ -4,7 +4,6 @@ namespace App\Models;
 
 use App\Enums\UserRole;
 use Database\Factories\UserFactory;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -31,7 +30,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable(['name', 'email', 'password', 'role', 'dealer_id'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
@@ -69,10 +68,34 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
-     * Check if user is Admin Dealer.
+     * Check if user is Dealer.
+     */
+    public function isDealer(): bool
+    {
+        return $this->role === UserRole::Dealer;
+    }
+
+    /**
+     * Check if user is Main Dealer.
+     */
+    public function isMainDealer(): bool
+    {
+        return $this->role === UserRole::MainDealer;
+    }
+
+    /**
+     * Check if user is Admin Dealer (alias for isDealer).
      */
     public function isAdminDealer(): bool
     {
-        return $this->role === UserRole::AdminDealer;
+        return $this->isDealer();
+    }
+
+    /**
+     * Determine if the user has global access across all dealers.
+     */
+    public function hasGlobalAccess(): bool
+    {
+        return $this->role === UserRole::SuperAdmin || $this->role === UserRole::MainDealer;
     }
 }

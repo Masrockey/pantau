@@ -18,7 +18,7 @@ test('authenticated users can view user list', function (): void {
     $response->assertOk();
 });
 
-test('users can be created with role and dealer', function (): void {
+test('dealer user can be created with dealer', function (): void {
     $admin = User::factory()->superAdmin()->create();
     $dealer = Dealer::factory()->create();
 
@@ -26,7 +26,7 @@ test('users can be created with role and dealer', function (): void {
         'name' => 'Budi Santoso',
         'email' => 'budi.santoso@example.com',
         'password' => 'Password123@',
-        'role' => UserRole::AdminDealer->value,
+        'role' => UserRole::Dealer->value,
         'dealer_id' => $dealer->id,
     ]);
 
@@ -34,7 +34,7 @@ test('users can be created with role and dealer', function (): void {
     $this->assertDatabaseHas('users', [
         'name' => 'Budi Santoso',
         'email' => 'budi.santoso@example.com',
-        'role' => UserRole::AdminDealer->value,
+        'role' => UserRole::Dealer->value,
         'dealer_id' => $dealer->id,
     ]);
 });
@@ -58,14 +58,33 @@ test('super admin can be created without dealer', function (): void {
     ]);
 });
 
-test('dealer is required when role is not super admin', function (): void {
+test('main dealer can be created without dealer', function (): void {
+    $admin = User::factory()->superAdmin()->create();
+
+    $response = $this->actingAs($admin)->post(route('users.store'), [
+        'name' => 'New Main Dealer',
+        'email' => 'newmaindealer@example.com',
+        'password' => 'Password123@',
+        'role' => UserRole::MainDealer->value,
+        'dealer_id' => '',
+    ]);
+
+    $response->assertRedirect(route('users.index'));
+    $this->assertDatabaseHas('users', [
+        'email' => 'newmaindealer@example.com',
+        'role' => UserRole::MainDealer->value,
+        'dealer_id' => null,
+    ]);
+});
+
+test('dealer is required when role is dealer', function (): void {
     $admin = User::factory()->superAdmin()->create();
 
     $response = $this->actingAs($admin)->post(route('users.store'), [
         'name' => 'Staff Test',
         'email' => 'staff.test@example.com',
         'password' => 'Password123@',
-        'role' => UserRole::User->value,
+        'role' => UserRole::Dealer->value,
         'dealer_id' => '',
     ]);
 
@@ -82,7 +101,7 @@ test('users can be updated', function (): void {
     $response = $this->actingAs($admin)->put(route('users.update', $user), [
         'name' => 'Nama Baru',
         'email' => $user->email,
-        'role' => UserRole::AdminDealer->value,
+        'role' => UserRole::Dealer->value,
         'dealer_id' => $newDealer->id,
     ]);
 
@@ -90,7 +109,7 @@ test('users can be updated', function (): void {
     $this->assertDatabaseHas('users', [
         'id' => $user->id,
         'name' => 'Nama Baru',
-        'role' => UserRole::AdminDealer->value,
+        'role' => UserRole::Dealer->value,
         'dealer_id' => $newDealer->id,
     ]);
 });

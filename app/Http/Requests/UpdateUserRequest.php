@@ -45,7 +45,7 @@ class UpdateUserRequest extends FormRequest
             'dealer_id' => [
                 'nullable',
                 'exists:dealers,id',
-                Rule::requiredIf(fn (): bool => $this->input('role') !== UserRole::SuperAdmin->value),
+                Rule::requiredIf(fn (): bool => $this->input('role') === UserRole::Dealer->value),
             ],
         ];
     }

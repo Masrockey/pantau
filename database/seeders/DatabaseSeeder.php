@@ -34,25 +34,25 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
+        User::updateOrCreate(
+            ['email' => 'maindealer@pantau.com'],
+            [
+                'name' => 'Main Dealer Regional',
+                'password' => Hash::make('Password123@'),
+                'role' => UserRole::MainDealer,
+                'dealer_id' => null,
+                'email_verified_at' => now(),
+            ]
+        );
+
         $dealer1 = Dealer::where('kode_dealer', 'DLR001')->first();
         if ($dealer1) {
             User::updateOrCreate(
-                ['email' => 'admindealer@pantau.com'],
+                ['email' => 'dealer@pantau.com'],
                 [
-                    'name' => 'Admin Dealer Jakarta',
+                    'name' => 'Dealer Padolo Jaya',
                     'password' => Hash::make('Password123@'),
-                    'role' => UserRole::AdminDealer,
-                    'dealer_id' => $dealer1->id,
-                    'email_verified_at' => now(),
-                ]
-            );
-
-            User::updateOrCreate(
-                ['email' => 'userdealer@pantau.com'],
-                [
-                    'name' => 'Staff Dealer Jakarta',
-                    'password' => Hash::make('Password123@'),
-                    'role' => UserRole::User,
+                    'role' => UserRole::Dealer,
                     'dealer_id' => $dealer1->id,
                     'email_verified_at' => now(),
                 ]

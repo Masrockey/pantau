@@ -22,10 +22,21 @@ class DealerController extends Controller
      */
     public function index(Request $request): Response
     {
+        $user = $request->user();
+        $isGlobal = $user?->hasGlobalAccess() ?? false;
+        $userDealerId = $user?->dealer_id;
+
         $search = $request->string('search')->trim()->value();
 
         $dealers = Dealer::query()
             ->withCount('users')
+            ->when(! $isGlobal, function ($query) use ($userDealerId): void {
+                if ($userDealerId) {
+                    $query->where('id', $userDealerId);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            })
             ->when($search !== '', function ($query) use ($search): void {
                 $query->where(function ($q) use ($search): void {
                     $q->where('kode_dealer', 'like', "%{$search}%")
@@ -45,6 +56,7 @@ class DealerController extends Controller
             'filters' => [
                 'search' => $search,
             ],
+            'canManageAll' => $isGlobal,
         ]);
     }
 
@@ -53,6 +65,10 @@ class DealerController extends Controller
      */
     public function store(StoreDealerRequest $request): RedirectResponse
     {
+        if (! $request->user()?->hasGlobalAccess()) {
+            abort(403, 'Aksi ini hanya dapat dilakukan oleh Super Admin atau Main Dealer.');
+        }
+
         Dealer::create($request->validated());
 
         Inertia::flash('toast', [
@@ -68,6 +84,11 @@ class DealerController extends Controller
      */
     public function update(UpdateDealerRequest $request, Dealer $dealer): RedirectResponse
     {
+        $user = $request->user();
+        if (! $user?->hasGlobalAccess() && (int) $dealer->id !== (int) $user?->dealer_id) {
+            abort(403, 'Anda hanya dapat memperbarui data dealer Anda sendiri.');
+        }
+
         $dealer->update($request->validated());
 
         Inertia::flash('toast', [
@@ -81,8 +102,12 @@ class DealerController extends Controller
     /**
      * Remove the specified dealer from storage.
      */
-    public function destroy(Dealer $dealer): RedirectResponse
+    public function destroy(Request $request, Dealer $dealer): RedirectResponse
     {
+        if (! $request->user()?->hasGlobalAccess()) {
+            abort(403, 'Aksi ini hanya dapat dilakukan oleh Super Admin atau Main Dealer.');
+        }
+
         if ($dealer->users()->exists()) {
             Inertia::flash('toast', [
                 'type' => 'error',
@@ -105,8 +130,12 @@ class DealerController extends Controller
     /**
      * Download the dealer Excel template.
      */
-    public function template(DealerExcelService $excelService): SymfonyResponse
+    public function template(Request $request, DealerExcelService $excelService): SymfonyResponse
     {
+        if (! $request->user()?->hasGlobalAccess()) {
+            abort(403, 'Aksi ini hanya dapat dilakukan oleh Super Admin atau Main Dealer.');
+        }
+
         $content = $excelService->generateTemplateXlsx();
 
         return response($content, 200, [
@@ -121,6 +150,10 @@ class DealerController extends Controller
      */
     public function import(ImportDealerRequest $request, DealerExcelService $excelService): RedirectResponse
     {
+        if (! $request->user()?->hasGlobalAccess()) {
+            abort(403, 'Aksi ini hanya dapat dilakukan oleh Super Admin atau Main Dealer.');
+        }
+
         /** @var UploadedFile $file */
         $file = $request->file('file');
         $updateExisting = $request->boolean('update_existing', true);

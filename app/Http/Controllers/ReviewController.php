@@ -21,13 +21,29 @@ class ReviewController extends Controller
      */
     public function index(Request $request): Response
     {
+        $user = $request->user();
+        $isGlobal = $user?->hasGlobalAccess() ?? false;
+        $userDealerId = $user?->dealer_id;
+
         $search = $request->string('search')->trim()->value();
-        $dealerFilter = $request->string('dealer_id')->trim()->value();
+        $dealerFilter = $isGlobal
+            ? $request->string('dealer_id')->trim()->value()
+            : (string) ($userDealerId ?? '');
         $starFilter = $request->string('star_rate')->trim()->value();
         $responFilter = $request->string('respon_from_owner')->trim()->value();
 
         $reviews = Review::query()
             ->with(['dealer:id,kode_dealer,nama_dealer'])
+            ->when(! $isGlobal, function ($query) use ($userDealerId): void {
+                if ($userDealerId) {
+                    $query->where('dealer_id', $userDealerId);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            })
+            ->when($isGlobal && $dealerFilter !== '', function ($query) use ($dealerFilter): void {
+                $query->where('dealer_id', $dealerFilter);
+            })
             ->when($search !== '', function ($query) use ($search): void {
                 $query->where(function ($q) use ($search): void {
                     $q->where('nama_reviewer', 'like', "%{$search}%")
@@ -38,9 +54,6 @@ class ReviewController extends Controller
                                 ->orWhere('nama_dealer', 'like', "%{$search}%");
                         });
                 });
-            })
-            ->when($dealerFilter !== '', function ($query) use ($dealerFilter): void {
-                $query->where('dealer_id', $dealerFilter);
             })
             ->when($starFilter !== '', function ($query) use ($starFilter): void {
                 $query->where('star_rate', '>=', (float) $starFilter)
@@ -59,7 +72,14 @@ class ReviewController extends Controller
             ->withQueryString();
 
         $baseStatsQuery = Review::query()
-            ->when($dealerFilter !== '', fn ($q) => $q->where('dealer_id', $dealerFilter));
+            ->when(! $isGlobal, function ($query) use ($userDealerId): void {
+                if ($userDealerId) {
+                    $query->where('dealer_id', $userDealerId);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            })
+            ->when($isGlobal && $dealerFilter !== '', fn ($q) => $q->where('dealer_id', $dealerFilter));
 
         $stats = [
             'total' => (clone $baseStatsQuery)->count(),
@@ -68,9 +88,15 @@ class ReviewController extends Controller
             'unresponded' => (clone $baseStatsQuery)->where('respon_from_owner', false)->count(),
         ];
 
-        $dealers = Dealer::query()
-            ->orderBy('nama_dealer')
-            ->get(['id', 'kode_dealer', 'nama_dealer']);
+        $dealersQuery = Dealer::query()->orderBy('nama_dealer');
+        if (! $isGlobal) {
+            if ($userDealerId) {
+                $dealersQuery->where('id', $userDealerId);
+            } else {
+                $dealersQuery->whereRaw('1 = 0');
+            }
+        }
+        $dealers = $dealersQuery->get(['id', 'kode_dealer', 'nama_dealer']);
 
         return Inertia::render('reviews/index', [
             'reviews' => $reviews,
@@ -78,10 +104,11 @@ class ReviewController extends Controller
             'stats' => $stats,
             'filters' => [
                 'search' => $search,
-                'dealer_id' => $dealerFilter,
+                'dealer_id' => $isGlobal ? $dealerFilter : '',
                 'star_rate' => $starFilter,
                 'respon_from_owner' => $responFilter,
             ],
+            'canManageAll' => $isGlobal,
         ]);
     }
 
@@ -90,7 +117,15 @@ class ReviewController extends Controller
      */
     public function store(StoreReviewRequest $request): RedirectResponse
     {
+        $user = $request->user();
         $data = $request->validated();
+
+        if (! $user->hasGlobalAccess()) {
+            if (! $user->dealer_id) {
+                abort(403, 'Akun Anda belum terhubung dengan dealer.');
+            }
+            $data['dealer_id'] = $user->dealer_id;
+        }
 
         if (! ($data['respon_from_owner'] ?? false)) {
             $data['respon_from_owner'] = false;
@@ -113,6 +148,11 @@ class ReviewController extends Controller
      */
     public function update(UpdateReviewRequest $request, Review $review): RedirectResponse
     {
+        $user = $request->user();
+        if (! $user->hasGlobalAccess()) {
+            abort(403, 'Role dealer tidak diizinkan untuk mengubah data review.');
+        }
+
         $data = $request->validated();
 
         if (! ($data['respon_from_owner'] ?? false)) {
@@ -134,8 +174,13 @@ class ReviewController extends Controller
     /**
      * Remove the specified review from storage.
      */
-    public function destroy(Review $review): RedirectResponse
+    public function destroy(Request $request, Review $review): RedirectResponse
     {
+        $user = $request->user();
+        if (! $user->hasGlobalAccess()) {
+            abort(403, 'Role dealer tidak diizinkan untuk menghapus review.');
+        }
+
         $review->delete();
 
         Inertia::flash('toast', [
@@ -174,6 +219,23 @@ class ReviewController extends Controller
                 'success' => false,
                 'message' => 'Service Scraper API di port 3000 tidak aktif atau tidak dapat dihubungi. Pastikan service scraper berjalan.',
             ], 503);
+        }
+
+        $user = $request->user();
+        $isGlobal = $user?->hasGlobalAccess() ?? false;
+
+        if (! $isGlobal && $request->input('dealer_id') === 'all') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda tidak memiliki izin untuk menarik review semua dealer.',
+            ], 403);
+        }
+
+        if (! $isGlobal && (int) $request->input('dealer_id') !== (int) $user?->dealer_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda hanya dapat menarik review untuk dealer Anda sendiri.',
+            ], 403);
         }
 
         if ($request->input('dealer_id') === 'all') {
@@ -220,6 +282,14 @@ class ReviewController extends Controller
         $validated = $request->validate([
             'dealer_id' => ['required', 'exists:dealers,id'],
         ]);
+
+        $user = $request->user();
+        if (! $user?->hasGlobalAccess() && (int) $validated['dealer_id'] !== (int) $user?->dealer_id) {
+            return response()->json([
+                'status' => 'failed',
+                'message' => 'Anda tidak memiliki akses ke dealer ini.',
+            ], 403);
+        }
 
         try {
             $statusData = $scraperService->getJobStatus($jobId);

@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import dealersRoute from '@/routes/dealers';
 import type { Dealer, PaginatedData } from '@/types';
@@ -41,9 +42,14 @@ interface DealersIndexProps {
     filters: {
         search?: string;
     };
+    canManageAll?: boolean;
 }
 
-export default function DealersIndex({ dealers, filters }: DealersIndexProps) {
+export default function DealersIndex({
+    dealers,
+    filters,
+    canManageAll = true,
+}: DealersIndexProps) {
     const [search, setSearch] = useState(filters.search || '');
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -280,23 +286,25 @@ export default function DealersIndex({ dealers, filters }: DealersIndexProps) {
                         </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                            variant="outline"
-                            onClick={handleOpenImport}
-                            className="shrink-0 gap-2 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-500/30 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
-                        >
-                            <Upload className="size-4 text-emerald-600 dark:text-emerald-400" />
-                            Import Excel
-                        </Button>
-                        <Button
-                            onClick={handleOpenCreate}
-                            className="shrink-0 gap-2"
-                        >
-                            <Plus className="size-4" />
-                            Tambah Dealer
-                        </Button>
-                    </div>
+                    {canManageAll && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                variant="outline"
+                                onClick={handleOpenImport}
+                                className="shrink-0 gap-2 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-500/30 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                            >
+                                <Upload className="size-4 text-emerald-600 dark:text-emerald-400" />
+                                Import Excel
+                            </Button>
+                            <Button
+                                onClick={handleOpenCreate}
+                                className="shrink-0 gap-2"
+                            >
+                                <Plus className="size-4" />
+                                Tambah Dealer
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Filter and Search Bar */}
@@ -611,22 +619,24 @@ export default function DealersIndex({ dealers, filters }: DealersIndexProps) {
                                                                 Edit
                                                             </span>
                                                         </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                handleOpenDelete(
-                                                                    dealer,
-                                                                )
-                                                            }
-                                                            className="h-8 px-2 text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
-                                                            title="Hapus Dealer"
-                                                        >
-                                                            <Trash2 className="size-3.5" />
-                                                            <span className="sr-only">
-                                                                Hapus
-                                                            </span>
-                                                        </Button>
+                                                        {canManageAll && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    handleOpenDelete(
+                                                                        dealer,
+                                                                    )
+                                                                }
+                                                                className="h-8 px-2 text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
+                                                                title="Hapus Dealer"
+                                                            >
+                                                                <Trash2 className="size-3.5" />
+                                                                <span className="sr-only">
+                                                                    Hapus
+                                                                </span>
+                                                            </Button>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1095,6 +1105,7 @@ export default function DealersIndex({ dealers, filters }: DealersIndexProps) {
                                 <Input
                                     id="edit_kode_dealer"
                                     placeholder="Contoh: DLR001"
+                                    disabled={!canManageAll}
                                     value={editForm.data.kode_dealer}
                                     onChange={(e) =>
                                         editForm.setData(
@@ -1102,11 +1113,14 @@ export default function DealersIndex({ dealers, filters }: DealersIndexProps) {
                                             e.target.value.toUpperCase(),
                                         )
                                     }
-                                    className={
+                                    className={cn(
                                         editForm.errors.kode_dealer
                                             ? 'border-destructive'
-                                            : ''
-                                    }
+                                            : '',
+                                        !canManageAll
+                                            ? 'cursor-not-allowed bg-muted'
+                                            : '',
+                                    )}
                                 />
                                 <InputError
                                     message={editForm.errors.kode_dealer}

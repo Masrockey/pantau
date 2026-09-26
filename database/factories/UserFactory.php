@@ -32,7 +32,7 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
-            'role' => UserRole::User,
+            'role' => UserRole::SuperAdmin,
             'dealer_id' => null,
         ];
     }
@@ -59,14 +59,33 @@ class UserFactory extends Factory
     }
 
     /**
-     * Indicate that the user is an admin dealer.
+     * Indicate that the user is a main dealer.
+     */
+    public function mainDealer(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => UserRole::MainDealer,
+            'dealer_id' => null,
+        ]);
+    }
+
+    /**
+     * Indicate that the user is a dealer.
+     */
+    public function dealer(?Dealer $dealer = null): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'role' => UserRole::Dealer,
+            'dealer_id' => $dealer ? $dealer->id : Dealer::factory(),
+        ]);
+    }
+
+    /**
+     * Indicate that the user is an admin dealer (alias for dealer).
      */
     public function adminDealer(?Dealer $dealer = null): static
     {
-        return $this->state(fn (array $attributes): array => [
-            'role' => UserRole::AdminDealer,
-            'dealer_id' => $dealer ? $dealer->id : Dealer::factory(),
-        ]);
+        return $this->dealer($dealer);
     }
 
     /**

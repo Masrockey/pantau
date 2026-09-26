@@ -16,6 +16,19 @@ class StoreReviewRequest extends FormRequest
     }
 
     /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        $user = $this->user();
+        if ($user && ! $user->hasGlobalAccess() && $user->dealer_id) {
+            $this->merge([
+                'dealer_id' => $user->dealer_id,
+            ]);
+        }
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, ValidationRule|array<mixed>|string>

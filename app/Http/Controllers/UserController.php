@@ -20,12 +20,25 @@ class UserController extends Controller
      */
     public function index(Request $request): Response
     {
+        $user = $request->user();
+        $isGlobal = $user?->hasGlobalAccess() ?? false;
+        $userDealerId = $user?->dealer_id;
+
         $search = $request->string('search')->trim()->value();
         $roleFilter = $request->string('role')->trim()->value();
-        $dealerFilter = $request->string('dealer_id')->trim()->value();
+        $dealerFilter = $isGlobal
+            ? $request->string('dealer_id')->trim()->value()
+            : (string) ($userDealerId ?? '');
 
         $users = User::query()
             ->with('dealer')
+            ->when(! $isGlobal, function ($query) use ($userDealerId): void {
+                if ($userDealerId) {
+                    $query->where('dealer_id', $userDealerId);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            })
             ->when($search !== '', function ($query) use ($search): void {
                 $query->where(function ($q) use ($search): void {
                     $q->where('name', 'like', "%{$search}%")
@@ -35,26 +48,39 @@ class UserController extends Controller
             ->when($roleFilter !== '', function ($query) use ($roleFilter): void {
                 $query->where('role', $roleFilter);
             })
-            ->when($dealerFilter !== '', function ($query) use ($dealerFilter): void {
+            ->when($isGlobal && $dealerFilter !== '', function ($query) use ($dealerFilter): void {
                 $query->where('dealer_id', $dealerFilter);
             })
             ->latest('id')
             ->paginate(10)
             ->withQueryString();
 
-        $dealers = Dealer::query()
-            ->orderBy('nama_dealer')
-            ->get(['id', 'kode_dealer', 'nama_dealer']);
+        $dealersQuery = Dealer::query()->orderBy('nama_dealer');
+        if (! $isGlobal) {
+            if ($userDealerId) {
+                $dealersQuery->where('id', $userDealerId);
+            } else {
+                $dealersQuery->whereRaw('1 = 0');
+            }
+        }
+        $dealers = $dealersQuery->get(['id', 'kode_dealer', 'nama_dealer']);
+
+        $roles = $isGlobal
+            ? UserRole::options()
+            : [
+                ['value' => UserRole::Dealer->value, 'label' => UserRole::Dealer->label()],
+            ];
 
         return Inertia::render('users/index', [
             'users' => $users,
             'dealers' => $dealers,
-            'roles' => UserRole::options(),
+            'roles' => $roles,
             'filters' => [
                 'search' => $search,
                 'role' => $roleFilter,
-                'dealer_id' => $dealerFilter,
+                'dealer_id' => $isGlobal ? $dealerFilter : '',
             ],
+            'canManageAll' => $isGlobal,
         ]);
     }
 
@@ -63,10 +89,17 @@ class UserController extends Controller
      */
     public function store(StoreUserRequest $request): RedirectResponse
     {
+        $currentUser = $request->user();
         $data = $request->validated();
         $data['password'] = Hash::make($data['password']);
 
-        if ($data['role'] === UserRole::SuperAdmin->value) {
+        if (! $currentUser?->hasGlobalAccess()) {
+            if (! $currentUser?->dealer_id) {
+                abort(403, 'Akun Anda belum terhubung dengan dealer.');
+            }
+            $data['role'] = UserRole::Dealer->value;
+            $data['dealer_id'] = $currentUser->dealer_id;
+        } elseif (in_array($data['role'], [UserRole::SuperAdmin->value, UserRole::MainDealer->value], true)) {
             $data['dealer_id'] = null;
         }
 
@@ -85,6 +118,11 @@ class UserController extends Controller
      */
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
+        $currentUser = $request->user();
+        if (! $currentUser?->hasGlobalAccess() && (int) $user->dealer_id !== (int) $currentUser?->dealer_id) {
+            abort(403, 'Anda tidak memiliki akses untuk mengubah user dealer lain.');
+        }
+
         $data = $request->validated();
 
         if (! empty($data['password'])) {
@@ -93,7 +131,10 @@ class UserController extends Controller
             unset($data['password']);
         }
 
-        if ($data['role'] === UserRole::SuperAdmin->value) {
+        if (! $currentUser?->hasGlobalAccess()) {
+            $data['role'] = UserRole::Dealer->value;
+            $data['dealer_id'] = $currentUser?->dealer_id;
+        } elseif (in_array($data['role'], [UserRole::SuperAdmin->value, UserRole::MainDealer->value], true)) {
             $data['dealer_id'] = null;
         }
 
@@ -112,13 +153,18 @@ class UserController extends Controller
      */
     public function destroy(Request $request, User $user): RedirectResponse
     {
-        if ($user->id === $request->user()?->id) {
+        $currentUser = $request->user();
+        if ($user->id === $currentUser?->id) {
             Inertia::flash('toast', [
                 'type' => 'error',
                 'message' => 'Anda tidak dapat menghapus akun Anda sendiri.',
             ]);
 
             return to_route('users.index');
+        }
+
+        if (! $currentUser?->hasGlobalAccess() && (int) $user->dealer_id !== (int) $currentUser?->dealer_id) {
+            abort(403, 'Anda tidak memiliki akses untuk menghapus user dealer lain.');
         }
 
         $user->delete();

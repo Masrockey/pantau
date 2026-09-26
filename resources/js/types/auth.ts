@@ -1,6 +1,6 @@
 import type { Dealer } from './dealer';
 
-export type UserRole = 'super_admin' | 'admin_dealer' | 'user';
+export type UserRole = 'super_admin' | 'dealer' | 'main_dealer';
 
 export type User = {
     id: number;

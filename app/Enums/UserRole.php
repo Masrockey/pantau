@@ -5,8 +5,8 @@ namespace App\Enums;
 enum UserRole: string
 {
     case SuperAdmin = 'super_admin';
-    case AdminDealer = 'admin_dealer';
-    case User = 'user';
+    case Dealer = 'dealer';
+    case MainDealer = 'main_dealer';
 
     /**
      * Get human-readable label for the role.
@@ -15,8 +15,8 @@ enum UserRole: string
     {
         return match ($this) {
             self::SuperAdmin => 'Super Admin',
-            self::AdminDealer => 'Admin Dealer',
-            self::User => 'User Dealer',
+            self::Dealer => 'Dealer',
+            self::MainDealer => 'Main Dealer',
         };
     }
 

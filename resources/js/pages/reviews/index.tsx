@@ -50,6 +50,7 @@ interface ReviewsIndexProps {
         star_rate?: string;
         respon_from_owner?: string;
     };
+    canManageAll?: boolean;
 }
 
 const selectClass =
@@ -60,6 +61,7 @@ export default function ReviewsIndex({
     dealers,
     stats,
     filters,
+    canManageAll = true,
 }: ReviewsIndexProps) {
     const [search, setSearch] = useState(filters.search || '');
     const [dealerFilter, setDealerFilter] = useState(filters.dealer_id || '');
@@ -76,7 +78,9 @@ export default function ReviewsIndex({
 
     // Scraper Sync State
     const [isSyncOpen, setIsSyncOpen] = useState(false);
-    const [syncDealerId, setSyncDealerId] = useState<string>('all');
+    const [syncDealerId, setSyncDealerId] = useState<string>(
+        canManageAll ? 'all' : (dealers[0]?.id ? String(dealers[0].id) : ''),
+    );
     const [syncLimit, setSyncLimit] = useState<number | string>(20);
     const [syncSort, setSyncSort] = useState<string>('newest');
     const [isCheckingHealth, setIsCheckingHealth] = useState(false);
@@ -302,7 +306,9 @@ export default function ReviewsIndex({
         const targetDealerId =
             defaultDealerId ||
             dealerFilter ||
-            'all';
+            (canManageAll
+                ? 'all'
+                : (dealers[0]?.id ? String(dealers[0].id) : ''));
 
         setSyncDealerId(targetDealerId);
         setSyncState('idle');
@@ -700,7 +706,9 @@ export default function ReviewsIndex({
                         Filter & Pencarian Review
                     </div>
 
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+                    <div
+                        className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${canManageAll ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}
+                    >
                         {/* Search Input */}
                         <form
                             onSubmit={handleSearchSubmit}
@@ -734,21 +742,23 @@ export default function ReviewsIndex({
                         </form>
 
                         {/* Filter Dealer */}
-                        <div>
-                            <select
-                                value={dealerFilter}
-                                onChange={handleDealerChange}
-                                className={selectClass}
-                                aria-label="Filter Dealer"
-                            >
-                                <option value="">Semua Dealer</option>
-                                {dealers.map((d) => (
-                                    <option key={d.id} value={d.id}>
-                                        {d.kode_dealer} - {d.nama_dealer}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        {canManageAll && (
+                            <div>
+                                <select
+                                    value={dealerFilter}
+                                    onChange={handleDealerChange}
+                                    className={selectClass}
+                                    aria-label="Filter Dealer"
+                                >
+                                    <option value="">Semua Dealer</option>
+                                    {dealers.map((d) => (
+                                        <option key={d.id} value={d.id}>
+                                            {d.kode_dealer} - {d.nama_dealer}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         {/* Filter Star Rate */}
                         <div>
@@ -807,14 +817,16 @@ export default function ReviewsIndex({
                                     <th className="w-12 px-3 py-3.5 text-center">
                                         No
                                     </th>
-                                    <th className="px-3 py-3.5 whitespace-nowrap">
-                                        Dealer
-                                    </th>
+                                    {canManageAll && (
+                                        <th className="px-3 py-3.5 whitespace-nowrap">
+                                            Dealer
+                                        </th>
+                                    )}
                                     <th className="px-3 py-3.5 whitespace-nowrap">
                                         Nama Reviewer
                                     </th>
                                     <th className="px-3 py-3.5 whitespace-nowrap">
-                                        Tgl Publish
+                                        Tgl Review
                                     </th>
                                     <th className="px-3 py-3.5 whitespace-nowrap">
                                         Star Rate
@@ -843,7 +855,7 @@ export default function ReviewsIndex({
                                 {reviews.data.length === 0 ? (
                                     <tr>
                                         <td
-                                            colSpan={11}
+                                            colSpan={canManageAll ? 11 : 10}
                                             className="py-12 text-center text-muted-foreground"
                                         >
                                             <div className="flex flex-col items-center justify-center gap-2">
@@ -886,28 +898,32 @@ export default function ReviewsIndex({
                                                 <td className="px-3 py-3.5 text-center font-mono text-xs text-muted-foreground">
                                                     {rowNumber}
                                                 </td>
-                                                <td className="px-3 py-3.5 whitespace-nowrap">
-                                                    {rev.dealer ? (
-                                                        <div className="flex flex-col">
-                                                            <span className="font-medium text-foreground">
-                                                                {
-                                                                    rev.dealer
-                                                                        .nama_dealer
-                                                                }
+                                                {canManageAll && (
+                                                    <td className="px-3 py-3.5 whitespace-nowrap">
+                                                        {rev.dealer ? (
+                                                            <div className="flex flex-col">
+                                                                <span className="font-medium text-foreground">
+                                                                    {
+                                                                        rev
+                                                                            .dealer
+                                                                            .nama_dealer
+                                                                    }
+                                                                </span>
+                                                                <span className="font-mono text-[11px] text-muted-foreground">
+                                                                    {
+                                                                        rev
+                                                                            .dealer
+                                                                            .kode_dealer
+                                                                    }
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground italic">
+                                                                -
                                                             </span>
-                                                            <span className="font-mono text-[11px] text-muted-foreground">
-                                                                {
-                                                                    rev.dealer
-                                                                        .kode_dealer
-                                                                }
-                                                            </span>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-xs text-muted-foreground italic">
-                                                            -
-                                                        </span>
-                                                    )}
-                                                </td>
+                                                        )}
+                                                    </td>
+                                                )}
                                                 <td className="px-3 py-3.5 font-medium whitespace-nowrap text-foreground">
                                                     {rev.nama_reviewer}
                                                 </td>
@@ -1026,38 +1042,42 @@ export default function ReviewsIndex({
                                                                 Detail
                                                             </span>
                                                         </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                handleOpenEdit(
-                                                                    rev,
-                                                                )
-                                                            }
-                                                            className="h-8 px-2 text-muted-foreground hover:text-foreground"
-                                                            title="Edit Review"
-                                                        >
-                                                            <Edit2 className="size-3.5" />
-                                                            <span className="sr-only">
-                                                                Edit
-                                                            </span>
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                handleOpenDelete(
-                                                                    rev,
-                                                                )
-                                                            }
-                                                            className="h-8 px-2 text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
-                                                            title="Hapus Review"
-                                                        >
-                                                            <Trash2 className="size-3.5" />
-                                                            <span className="sr-only">
-                                                                Hapus
-                                                            </span>
-                                                        </Button>
+                                                        {canManageAll && (
+                                                            <>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() =>
+                                                                        handleOpenEdit(
+                                                                            rev,
+                                                                        )
+                                                                    }
+                                                                    className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                                                                    title="Edit Review"
+                                                                >
+                                                                    <Edit2 className="size-3.5" />
+                                                                    <span className="sr-only">
+                                                                        Edit
+                                                                    </span>
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() =>
+                                                                        handleOpenDelete(
+                                                                            rev,
+                                                                        )
+                                                                    }
+                                                                    className="h-8 px-2 text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
+                                                                    title="Hapus Review"
+                                                                >
+                                                                    <Trash2 className="size-3.5" />
+                                                                    <span className="sr-only">
+                                                                        Hapus
+                                                                    </span>
+                                                                </Button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1114,26 +1134,39 @@ export default function ReviewsIndex({
                                     Pilih Dealer{' '}
                                     <span className="text-destructive">*</span>
                                 </Label>
-                                <select
-                                    id="create_dealer_id"
-                                    value={createForm.data.dealer_id}
-                                    onChange={(e) =>
-                                        createForm.setData(
-                                            'dealer_id',
-                                            e.target.value,
-                                        )
-                                    }
-                                    className={`${selectClass} ${createForm.errors.dealer_id ? 'border-destructive' : ''}`}
-                                >
-                                    <option value="" disabled>
-                                        Pilih Dealer...
-                                    </option>
-                                    {dealers.map((d) => (
-                                        <option key={d.id} value={d.id}>
-                                            {d.kode_dealer} - {d.nama_dealer}
+                                {canManageAll ? (
+                                    <select
+                                        id="create_dealer_id"
+                                        value={createForm.data.dealer_id}
+                                        onChange={(e) =>
+                                            createForm.setData(
+                                                'dealer_id',
+                                                e.target.value,
+                                            )
+                                        }
+                                        className={`${selectClass} ${createForm.errors.dealer_id ? 'border-destructive' : ''}`}
+                                    >
+                                        <option value="" disabled>
+                                            Pilih Dealer...
                                         </option>
-                                    ))}
-                                </select>
+                                        {dealers.map((d) => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.kode_dealer} - {d.nama_dealer}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <Input
+                                        id="create_dealer_id"
+                                        disabled
+                                        value={
+                                            dealers[0]
+                                                ? `${dealers[0].kode_dealer} - ${dealers[0].nama_dealer}`
+                                                : 'Dealer Anda'
+                                        }
+                                        className="cursor-not-allowed bg-muted"
+                                    />
+                                )}
                                 <InputError
                                     message={createForm.errors.dealer_id}
                                 />
@@ -1455,26 +1488,47 @@ export default function ReviewsIndex({
                                     Pilih Dealer{' '}
                                     <span className="text-destructive">*</span>
                                 </Label>
-                                <select
-                                    id="edit_dealer_id"
-                                    value={editForm.data.dealer_id}
-                                    onChange={(e) =>
-                                        editForm.setData(
-                                            'dealer_id',
-                                            e.target.value,
-                                        )
-                                    }
-                                    className={`${selectClass} ${editForm.errors.dealer_id ? 'border-destructive' : ''}`}
-                                >
-                                    <option value="" disabled>
-                                        Pilih Dealer...
-                                    </option>
-                                    {dealers.map((d) => (
-                                        <option key={d.id} value={d.id}>
-                                            {d.kode_dealer} - {d.nama_dealer}
+                                {canManageAll ? (
+                                    <select
+                                        id="edit_dealer_id"
+                                        value={editForm.data.dealer_id}
+                                        onChange={(e) =>
+                                            editForm.setData(
+                                                'dealer_id',
+                                                e.target.value,
+                                            )
+                                        }
+                                        className={`${selectClass} ${editForm.errors.dealer_id ? 'border-destructive' : ''}`}
+                                    >
+                                        <option value="" disabled>
+                                            Pilih Dealer...
                                         </option>
-                                    ))}
-                                </select>
+                                        {dealers.map((d) => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.kode_dealer} - {d.nama_dealer}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <Input
+                                        id="edit_dealer_id"
+                                        disabled
+                                        value={
+                                            dealers.find(
+                                                (d) =>
+                                                    String(d.id) ===
+                                                    String(
+                                                        editForm.data.dealer_id,
+                                                    ),
+                                            )
+                                                ? `${dealers.find((d) => String(d.id) === String(editForm.data.dealer_id))?.kode_dealer} - ${dealers.find((d) => String(d.id) === String(editForm.data.dealer_id))?.nama_dealer}`
+                                                : dealers[0]
+                                                  ? `${dealers[0].kode_dealer} - ${dealers[0].nama_dealer}`
+                                                  : 'Dealer Anda'
+                                        }
+                                        className="cursor-not-allowed bg-muted"
+                                    />
+                                )}
                                 <InputError
                                     message={editForm.errors.dealer_id}
                                 />
@@ -2006,17 +2060,8 @@ export default function ReviewsIndex({
                                                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                                                 <span className="relative inline-flex size-2 rounded-full bg-emerald-500"></span>
                                             </span>
-                                            API Online (:3000)
+                                            API Is Online
                                         </Badge>
-                                        {proxyInfo?.enabled && (
-                                            <Badge
-                                                variant="outline"
-                                                className="gap-1 border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                                            >
-                                                <Sparkles className="size-3 text-blue-500" />
-                                                Rotasi Proxy Aktif
-                                            </Badge>
-                                        )}
                                     </>
                                 ) : (
                                     <Badge
@@ -2073,14 +2118,19 @@ export default function ReviewsIndex({
                                     }
                                     className={selectClass}
                                     required
+                                    disabled={!canManageAll && dealers.length <= 1}
                                 >
-                                    <option value="" disabled>
-                                        -- Pilih Dealer yang Akan Disinkronkan
-                                        --
-                                    </option>
-                                    <option value="all">
-                                        🌟 Semua Dealer ({dealers.length} Showroom)
-                                    </option>
+                                    {canManageAll && (
+                                        <>
+                                            <option value="" disabled>
+                                                -- Pilih Dealer yang Akan Disinkronkan
+                                                --
+                                            </option>
+                                            <option value="all">
+                                                Semua Dealer ({dealers.length} Showroom)
+                                            </option>
+                                        </>
+                                    )}
                                     {dealers.map((d) => (
                                         <option key={d.id} value={d.id}>
                                             {d.kode_dealer} - {d.nama_dealer}
@@ -2100,15 +2150,12 @@ export default function ReviewsIndex({
                                         <Label htmlFor="sync_limit">
                                             Maksimal Ulasan
                                         </Label>
-                                        <span className="font-mono text-[10px] text-muted-foreground">
-                                            1 - 1000
-                                        </span>
                                     </div>
                                     <Input
                                         id="sync_limit"
                                         type="number"
                                         min={1}
-                                        max={1000}
+                                        max={5000}
                                         value={syncLimit}
                                         onChange={(e) =>
                                             setSyncLimit(e.target.value)
@@ -2122,7 +2169,7 @@ export default function ReviewsIndex({
                                         <span className="text-[10px] text-muted-foreground">
                                             Preset:
                                         </span>
-                                        {[5, 10, 20, 50, 100].map((num) => (
+                                        {[5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000].map((num) => (
                                             <button
                                                 key={num}
                                                 type="button"
@@ -2157,10 +2204,10 @@ export default function ReviewsIndex({
                                             Ulasan Terbaru
                                         </option>
                                         <option value="highest">
-                                            Rating Tertinggi (5★)
+                                            Rating Tertinggi
                                         </option>
                                         <option value="lowest">
-                                            Rating Terendah (1★)
+                                            Rating Terendah
                                         </option>
                                         <option value="relevant">
                                             Paling Relevan
@@ -2197,7 +2244,7 @@ export default function ReviewsIndex({
                                         <strong className="text-foreground">
                                             Rotasi Proxy Anti-Limit:
                                         </strong>{' '}
-                                        Menggunakan pool proxy otomatis (Proxifly) untuk mencegah limitasi dan CAPTCHA Google Maps.
+                                        Menggunakan pool proxy otomatis untuk mencegah limitasi dan CAPTCHA Google Maps.
                                     </li>
                                     <li>
                                         Rating rata-rata dan total review dealer

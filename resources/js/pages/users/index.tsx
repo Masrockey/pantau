@@ -49,6 +49,7 @@ interface UsersIndexProps {
         role?: string;
         dealer_id?: string;
     };
+    canManageAll?: boolean;
 }
 
 export default function UsersIndex({
@@ -56,6 +57,7 @@ export default function UsersIndex({
     dealers,
     roles,
     filters,
+    canManageAll = true,
 }: UsersIndexProps) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const currentUserId = auth?.user?.id;
@@ -74,7 +76,7 @@ export default function UsersIndex({
         name: '',
         email: '',
         password: '',
-        role: 'user' as UserRole,
+        role: 'dealer' as UserRole,
         dealer_id: '' as string | number,
     });
 
@@ -82,7 +84,7 @@ export default function UsersIndex({
         name: '',
         email: '',
         password: '',
-        role: 'user' as UserRole,
+        role: 'dealer' as UserRole,
         dealer_id: '' as string | number,
     });
 
@@ -137,8 +139,11 @@ export default function UsersIndex({
             name: '',
             email: '',
             password: '',
-            role: 'user',
-            dealer_id: dealers.length > 0 ? dealers[0].id : '',
+            role: 'dealer',
+            dealer_id:
+                dealers.length > 0
+                    ? dealers[0].id
+                    : (auth?.user?.dealer_id ?? ''),
         });
         setIsCreateOpen(true);
     };
@@ -206,16 +211,17 @@ export default function UsersIndex({
                         Super Admin
                     </Badge>
                 );
-            case 'admin_dealer':
+            case 'main_dealer':
                 return (
                     <Badge
                         variant="outline"
                         className="border-blue-300 bg-blue-50 font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300"
                     >
                         <Building2 className="mr-1 size-3" />
-                        Admin Dealer
+                        Main Dealer
                     </Badge>
                 );
+            case 'dealer':
             default:
                 return (
                     <Badge
@@ -223,7 +229,7 @@ export default function UsersIndex({
                         className="border-emerald-300 bg-emerald-50 font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
                     >
                         <UserCheck className="mr-1 size-3" />
-                        User Dealer
+                        Dealer
                     </Badge>
                 );
         }
@@ -275,7 +281,12 @@ export default function UsersIndex({
                         {/* Search Input */}
                         <form
                             onSubmit={handleSearchSubmit}
-                            className="relative sm:col-span-2 md:col-span-2"
+                            className={cn(
+                                'relative',
+                                canManageAll
+                                    ? 'sm:col-span-2 md:col-span-2'
+                                    : 'col-span-full',
+                            )}
                         >
                             <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
@@ -303,39 +314,43 @@ export default function UsersIndex({
                             )}
                         </form>
 
-                        {/* Filter Role */}
-                        <div>
-                            <select
-                                value={roleFilter}
-                                onChange={handleRoleChange}
-                                className={selectClass}
-                                aria-label="Filter Role"
-                            >
-                                <option value="">Semua Role</option>
-                                {roles.map((r) => (
-                                    <option key={r.value} value={r.value}>
-                                        {r.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        {canManageAll && (
+                            <>
+                                {/* Filter Role */}
+                                <div>
+                                    <select
+                                        value={roleFilter}
+                                        onChange={handleRoleChange}
+                                        className={selectClass}
+                                        aria-label="Filter Role"
+                                    >
+                                        <option value="">Semua Role</option>
+                                        {roles.map((r) => (
+                                            <option key={r.value} value={r.value}>
+                                                {r.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                        {/* Filter Dealer */}
-                        <div>
-                            <select
-                                value={dealerFilter}
-                                onChange={handleDealerChange}
-                                className={selectClass}
-                                aria-label="Filter Dealer"
-                            >
-                                <option value="">Semua Dealer</option>
-                                {dealers.map((d) => (
-                                    <option key={d.id} value={d.id}>
-                                        {d.kode_dealer} - {d.nama_dealer}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                                {/* Filter Dealer */}
+                                <div>
+                                    <select
+                                        value={dealerFilter}
+                                        onChange={handleDealerChange}
+                                        className={selectClass}
+                                        aria-label="Filter Dealer"
+                                    >
+                                        <option value="">Semua Dealer</option>
+                                        {dealers.map((d) => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.kode_dealer} - {d.nama_dealer}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     {hasActiveFilters && (
@@ -482,6 +497,13 @@ export default function UsersIndex({
                                                             <Shield className="size-3 text-purple-500" />
                                                             Akses Global (Semua
                                                             Dealer)
+                                                        </span>
+                                                    ) : user.role ===
+                                                      'main_dealer' ? (
+                                                        <span className="flex items-center gap-1 text-xs text-muted-foreground italic">
+                                                            <Building2 className="size-3 text-blue-500" />
+                                                            Akses Main Dealer
+                                                            (Semua Dealer)
                                                         </span>
                                                     ) : (
                                                         <span className="text-xs text-amber-600 italic dark:text-amber-400">
@@ -651,34 +673,44 @@ export default function UsersIndex({
                             <Label htmlFor="create_user_role">
                                 Role (Peran)
                             </Label>
-                            <select
-                                id="create_user_role"
-                                value={createForm.data.role}
-                                onChange={(e) => {
-                                    const nextRole = e.target.value as UserRole;
-                                    createForm.setData((prev) => ({
-                                        ...prev,
-                                        role: nextRole,
-                                        dealer_id:
-                                            nextRole === 'super_admin'
-                                                ? ''
-                                                : prev.dealer_id ||
-                                                  (dealers[0]?.id ?? ''),
-                                    }));
-                                }}
-                                className={cn(
-                                    selectClass,
-                                    createForm.errors.role
-                                        ? 'border-destructive'
-                                        : '',
-                                )}
-                            >
-                                {roles.map((r) => (
-                                    <option key={r.value} value={r.value}>
-                                        {r.label}
-                                    </option>
-                                ))}
-                            </select>
+                            {canManageAll ? (
+                                <select
+                                    id="create_user_role"
+                                    value={createForm.data.role}
+                                    onChange={(e) => {
+                                        const nextRole = e.target.value as UserRole;
+                                        createForm.setData((prev) => ({
+                                            ...prev,
+                                            role: nextRole,
+                                            dealer_id:
+                                                nextRole === 'super_admin' ||
+                                                nextRole === 'main_dealer'
+                                                    ? ''
+                                                    : prev.dealer_id ||
+                                                      (dealers[0]?.id ?? ''),
+                                        }));
+                                    }}
+                                    className={cn(
+                                        selectClass,
+                                        createForm.errors.role
+                                            ? 'border-destructive'
+                                            : '',
+                                    )}
+                                >
+                                    {roles.map((r) => (
+                                        <option key={r.value} value={r.value}>
+                                            {r.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <Input
+                                    id="create_user_role"
+                                    disabled
+                                    value="Dealer"
+                                    className="cursor-not-allowed bg-muted"
+                                />
+                            )}
                             <InputError message={createForm.errors.role} />
                         </div>
 
@@ -687,53 +719,76 @@ export default function UsersIndex({
                                 <Label htmlFor="create_user_dealer">
                                     Dealer Terintegrasi
                                 </Label>
-                                {createForm.data.role === 'super_admin' && (
+                                {(createForm.data.role === 'super_admin' ||
+                                    createForm.data.role === 'main_dealer') && (
                                     <span className="text-[11px] text-muted-foreground italic">
-                                        Opsional untuk Super Admin
+                                        {createForm.data.role === 'super_admin'
+                                            ? 'Akses Semua Dealer (Global)'
+                                            : 'Akses Semua Dealer (Regional)'}
                                     </span>
                                 )}
                             </div>
 
-                            <select
-                                id="create_user_dealer"
-                                value={createForm.data.dealer_id}
-                                disabled={
-                                    createForm.data.role === 'super_admin'
-                                }
-                                onChange={(e) =>
-                                    createForm.setData(
-                                        'dealer_id',
-                                        e.target.value,
-                                    )
-                                }
-                                className={cn(
-                                    selectClass,
-                                    createForm.errors.dealer_id
-                                        ? 'border-destructive'
-                                        : '',
-                                    createForm.data.role === 'super_admin'
-                                        ? 'cursor-not-allowed bg-muted/50 text-muted-foreground'
-                                        : '',
-                                )}
-                            >
-                                {createForm.data.role === 'super_admin' ? (
-                                    <option value="">
-                                        Akses Semua Dealer (Global)
-                                    </option>
-                                ) : (
-                                    <>
+                            {canManageAll ? (
+                                <select
+                                    id="create_user_dealer"
+                                    value={createForm.data.dealer_id}
+                                    disabled={
+                                        createForm.data.role === 'super_admin' ||
+                                        createForm.data.role === 'main_dealer'
+                                    }
+                                    onChange={(e) =>
+                                        createForm.setData(
+                                            'dealer_id',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={cn(
+                                        selectClass,
+                                        createForm.errors.dealer_id
+                                            ? 'border-destructive'
+                                            : '',
+                                        createForm.data.role === 'super_admin' ||
+                                            createForm.data.role === 'main_dealer'
+                                            ? 'cursor-not-allowed bg-muted/50 text-muted-foreground'
+                                            : '',
+                                    )}
+                                >
+                                    {createForm.data.role === 'super_admin' ||
+                                    createForm.data.role === 'main_dealer' ? (
                                         <option value="">
-                                            -- Pilih Dealer --
+                                            Akses Semua Dealer (
+                                            {createForm.data.role === 'super_admin'
+                                                ? 'Global'
+                                                : 'Main Dealer'}
+                                            )
                                         </option>
-                                        {dealers.map((d) => (
-                                            <option key={d.id} value={d.id}>
-                                                {d.kode_dealer} -{' '}
-                                                {d.nama_dealer}
+                                    ) : (
+                                        <>
+                                            <option value="">
+                                                -- Pilih Dealer --
                                             </option>
-                                        ))}
-                                    </>
-                                )}
-                            </select>
+                                            {dealers.map((d) => (
+                                                <option key={d.id} value={d.id}>
+                                                    {d.kode_dealer} -{' '}
+                                                    {d.nama_dealer}
+                                                </option>
+                                            ))}
+                                        </>
+                                    )}
+                                </select>
+                            ) : (
+                                <Input
+                                    id="create_user_dealer"
+                                    disabled
+                                    value={
+                                        dealers[0]
+                                            ? `${dealers[0].kode_dealer} - ${dealers[0].nama_dealer}`
+                                            : 'Dealer Anda'
+                                    }
+                                    className="cursor-not-allowed bg-muted"
+                                />
+                            )}
                             <InputError message={createForm.errors.dealer_id} />
                         </div>
 
@@ -838,34 +893,44 @@ export default function UsersIndex({
 
                         <div className="space-y-2">
                             <Label htmlFor="edit_user_role">Role (Peran)</Label>
-                            <select
-                                id="edit_user_role"
-                                value={editForm.data.role}
-                                onChange={(e) => {
-                                    const nextRole = e.target.value as UserRole;
-                                    editForm.setData((prev) => ({
-                                        ...prev,
-                                        role: nextRole,
-                                        dealer_id:
-                                            nextRole === 'super_admin'
-                                                ? ''
-                                                : prev.dealer_id ||
-                                                  (dealers[0]?.id ?? ''),
-                                    }));
-                                }}
-                                className={cn(
-                                    selectClass,
-                                    editForm.errors.role
-                                        ? 'border-destructive'
-                                        : '',
-                                )}
-                            >
-                                {roles.map((r) => (
-                                    <option key={r.value} value={r.value}>
-                                        {r.label}
-                                    </option>
-                                ))}
-                            </select>
+                            {canManageAll ? (
+                                <select
+                                    id="edit_user_role"
+                                    value={editForm.data.role}
+                                    onChange={(e) => {
+                                        const nextRole = e.target.value as UserRole;
+                                        editForm.setData((prev) => ({
+                                            ...prev,
+                                            role: nextRole,
+                                            dealer_id:
+                                                nextRole === 'super_admin' ||
+                                                nextRole === 'main_dealer'
+                                                    ? ''
+                                                    : prev.dealer_id ||
+                                                      (dealers[0]?.id ?? ''),
+                                        }));
+                                    }}
+                                    className={cn(
+                                        selectClass,
+                                        editForm.errors.role
+                                            ? 'border-destructive'
+                                            : '',
+                                    )}
+                                >
+                                    {roles.map((r) => (
+                                        <option key={r.value} value={r.value}>
+                                            {r.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <Input
+                                    id="edit_user_role"
+                                    disabled
+                                    value="Dealer"
+                                    className="cursor-not-allowed bg-muted"
+                                />
+                            )}
                             <InputError message={editForm.errors.role} />
                         </div>
 
@@ -874,51 +939,76 @@ export default function UsersIndex({
                                 <Label htmlFor="edit_user_dealer">
                                     Dealer Terintegrasi
                                 </Label>
-                                {editForm.data.role === 'super_admin' && (
+                                {(editForm.data.role === 'super_admin' ||
+                                    editForm.data.role === 'main_dealer') && (
                                     <span className="text-[11px] text-muted-foreground italic">
-                                        Opsional untuk Super Admin
+                                        {editForm.data.role === 'super_admin'
+                                            ? 'Akses Semua Dealer (Global)'
+                                            : 'Akses Semua Dealer (Regional)'}
                                     </span>
                                 )}
                             </div>
 
-                            <select
-                                id="edit_user_dealer"
-                                value={editForm.data.dealer_id}
-                                disabled={editForm.data.role === 'super_admin'}
-                                onChange={(e) =>
-                                    editForm.setData(
-                                        'dealer_id',
-                                        e.target.value,
-                                    )
-                                }
-                                className={cn(
-                                    selectClass,
-                                    editForm.errors.dealer_id
-                                        ? 'border-destructive'
-                                        : '',
-                                    editForm.data.role === 'super_admin'
-                                        ? 'cursor-not-allowed bg-muted/50 text-muted-foreground'
-                                        : '',
-                                )}
-                            >
-                                {editForm.data.role === 'super_admin' ? (
-                                    <option value="">
-                                        Akses Semua Dealer (Global)
-                                    </option>
-                                ) : (
-                                    <>
+                            {canManageAll ? (
+                                <select
+                                    id="edit_user_dealer"
+                                    value={editForm.data.dealer_id}
+                                    disabled={
+                                        editForm.data.role === 'super_admin' ||
+                                        editForm.data.role === 'main_dealer'
+                                    }
+                                    onChange={(e) =>
+                                        editForm.setData(
+                                            'dealer_id',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={cn(
+                                        selectClass,
+                                        editForm.errors.dealer_id
+                                            ? 'border-destructive'
+                                            : '',
+                                        editForm.data.role === 'super_admin' ||
+                                            editForm.data.role === 'main_dealer'
+                                            ? 'cursor-not-allowed bg-muted/50 text-muted-foreground'
+                                            : '',
+                                    )}
+                                >
+                                    {editForm.data.role === 'super_admin' ||
+                                    editForm.data.role === 'main_dealer' ? (
                                         <option value="">
-                                            -- Pilih Dealer --
+                                            Akses Semua Dealer (
+                                            {editForm.data.role === 'super_admin'
+                                                ? 'Global'
+                                                : 'Main Dealer'}
+                                            )
                                         </option>
-                                        {dealers.map((d) => (
-                                            <option key={d.id} value={d.id}>
-                                                {d.kode_dealer} -{' '}
-                                                {d.nama_dealer}
+                                    ) : (
+                                        <>
+                                            <option value="">
+                                                -- Pilih Dealer --
                                             </option>
-                                        ))}
-                                    </>
-                                )}
-                            </select>
+                                            {dealers.map((d) => (
+                                                <option key={d.id} value={d.id}>
+                                                    {d.kode_dealer} -{' '}
+                                                    {d.nama_dealer}
+                                                </option>
+                                            ))}
+                                        </>
+                                    )}
+                                </select>
+                            ) : (
+                                <Input
+                                    id="edit_user_dealer"
+                                    disabled
+                                    value={
+                                        dealers[0]
+                                            ? `${dealers[0].kode_dealer} - ${dealers[0].nama_dealer}`
+                                            : 'Dealer Anda'
+                                    }
+                                    className="cursor-not-allowed bg-muted"
+                                />
+                            )}
                             <InputError message={editForm.errors.dealer_id} />
                         </div>
 

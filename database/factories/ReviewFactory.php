@@ -61,4 +61,14 @@ class ReviewFactory extends Factory
             'respon' => null,
         ]);
     }
+
+    /**
+     * Indicate that the review belongs to a specific dealer.
+     */
+    public function forDealer(Dealer $dealer): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'dealer_id' => $dealer->id,
+        ]);
+    }
 }
