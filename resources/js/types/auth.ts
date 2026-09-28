@@ -5,6 +5,7 @@ export type UserRole = 'super_admin' | 'dealer' | 'main_dealer';
 export type User = {
     id: number;
     name: string;
+    username?: string | null;
     email: string;
     role: UserRole;
     dealer_id: number | null;

@@ -230,11 +230,10 @@ class GoogleReviewScraperService
             // Parse publish date
             $publishedDate = null;
             if (! empty($rev['publishedAtDate'])) {
-                try {
-                    $publishedDate = Carbon::parse($rev['publishedAtDate'])->format('Y-m-d');
-                } catch (\Throwable) {
-                    $publishedDate = null;
-                }
+                $publishedDate = $this->parseRelativeOrIsoDate((string) $rev['publishedAtDate']);
+            }
+            if (! $publishedDate && ! empty($rev['relativeTime'])) {
+                $publishedDate = $this->parseRelativeOrIsoDate((string) $rev['relativeTime']);
             }
             if (! $publishedDate) {
                 $publishedDate = now()->format('Y-m-d');
@@ -245,12 +244,9 @@ class GoogleReviewScraperService
             $hasOwnerResponse = is_array($ownerResp) && ! empty($ownerResp['text']);
             $ownerText = $hasOwnerResponse ? trim((string) $ownerResp['text']) : null;
             $ownerDate = null;
-            if ($hasOwnerResponse && ! empty($ownerResp['date'])) {
-                try {
-                    $ownerDate = Carbon::parse($ownerResp['date'])->format('Y-m-d');
-                } catch (\Throwable) {
-                    $ownerDate = null;
-                }
+            if ($hasOwnerResponse) {
+                $rawOwnerDate = ! empty($ownerResp['date']) ? (string) $ownerResp['date'] : null;
+                $ownerDate = $this->parseRelativeOrIsoDate($rawOwnerDate, $publishedDate);
             }
 
             // Review URL
@@ -301,7 +297,7 @@ class GoogleReviewScraperService
                     'review' => $reviewText ?? $existing->review,
                     'tanggal_publish_review' => $publishedDate ?: $existing->tanggal_publish_review,
                     'respon_from_owner' => $hasOwnerResponse,
-                    'tanggal_respon' => $ownerDate ?? ($hasOwnerResponse ? $existing->tanggal_respon : null),
+                    'tanggal_respon' => $ownerDate ?? ($hasOwnerResponse ? ($existing->tanggal_respon ?: $publishedDate) : null),
                     'respon' => $ownerText ?? ($hasOwnerResponse ? $existing->respon : null),
                     'google_review_url' => $googleReviewUrl ?: $existing->google_review_url,
                 ]);
@@ -379,5 +375,100 @@ class GoogleReviewScraperService
         }
 
         throw new Exception("Scraping timeout melebihi batas {$maxWaitSeconds} detik.");
+    }
+
+    /**
+     * Parse relative or ISO date string (supporting Indonesian & English relative terms) to Y-m-d format.
+     */
+    public function parseRelativeOrIsoDate(?string $rawDate, ?string $fallbackDate = null): ?string
+    {
+        if (empty($rawDate)) {
+            return $fallbackDate;
+        }
+
+        $trimmed = trim($rawDate);
+
+        // 1. Try direct Carbon parse first (e.g. ISO 8601 "2024-05-12T...", or "2024-05-12")
+        try {
+            return Carbon::parse($trimmed)->format('Y-m-d');
+        } catch (\Throwable) {
+            // Proceed to relative parser
+        }
+
+        // Clean up text
+        $text = mb_strtolower($trimmed);
+        $text = (string) preg_replace('/^(respon|respons|tanggapan)\s+(dari\s+)?pemilik\s*:\s*/i', '', $text);
+        $text = (string) preg_replace('/^(diedit|edited|bearbeitet|gewijzigd)\s*/i', '', $text);
+        $text = trim($text);
+
+        $now = Carbon::now();
+
+        // Yesterday / Kemarin
+        if (str_contains($text, 'kemarin') || str_contains($text, 'yesterday')) {
+            return $now->subDay()->format('Y-m-d');
+        }
+
+        // Just now / Hours / Minutes
+        if (
+            str_contains($text, 'jam lalu') || str_contains($text, 'jam yang lalu') ||
+            str_contains($text, 'hour ago') || str_contains($text, 'hours ago') ||
+            str_contains($text, 'menit lalu') || str_contains($text, 'menit yang lalu') ||
+            str_contains($text, 'minute ago') || str_contains($text, 'minutes ago') ||
+            str_contains($text, 'baru saja') || str_contains($text, 'just now')
+        ) {
+            return $now->format('Y-m-d');
+        }
+
+        // Days / Hari
+        if (
+            str_contains($text, 'hari lalu') || str_contains($text, 'hari yang lalu') ||
+            str_contains($text, 'day ago') || str_contains($text, 'days ago')
+        ) {
+            preg_match('/(\d+)/', $text, $matches);
+            $days = ! empty($matches[1]) ? (int) $matches[1] : 1;
+
+            return $now->subDays($days)->format('Y-m-d');
+        }
+
+        // Weeks / Minggu
+        if (
+            str_contains($text, 'minggu lalu') || str_contains($text, 'minggu yang lalu') ||
+            str_contains($text, 'seminggu') ||
+            str_contains($text, 'week ago') || str_contains($text, 'weeks ago') ||
+            str_contains($text, 'a week ago')
+        ) {
+            preg_match('/(\d+)/', $text, $matches);
+            $weeks = ! empty($matches[1]) ? (int) $matches[1] : 1;
+
+            return $now->subWeeks($weeks)->format('Y-m-d');
+        }
+
+        // Months / Bulan
+        if (
+            str_contains($text, 'bulan lalu') || str_contains($text, 'bulan yang lalu') ||
+            str_contains($text, 'sebulan') ||
+            str_contains($text, 'month ago') || str_contains($text, 'months ago') ||
+            str_contains($text, 'a month ago')
+        ) {
+            preg_match('/(\d+)/', $text, $matches);
+            $months = ! empty($matches[1]) ? (int) $matches[1] : 1;
+
+            return $now->subMonths($months)->format('Y-m-d');
+        }
+
+        // Years / Tahun
+        if (
+            str_contains($text, 'tahun lalu') || str_contains($text, 'tahun yang lalu') ||
+            str_contains($text, 'setahun') ||
+            str_contains($text, 'year ago') || str_contains($text, 'years ago') ||
+            str_contains($text, 'a year ago')
+        ) {
+            preg_match('/(\d+)/', $text, $matches);
+            $years = ! empty($matches[1]) ? (int) $matches[1] : 1;
+
+            return $now->subYears($years)->format('Y-m-d');
+        }
+
+        return $fallbackDate;
     }
 }

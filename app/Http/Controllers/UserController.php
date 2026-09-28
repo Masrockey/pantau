@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -42,6 +43,7 @@ class UserController extends Controller
             ->when($search !== '', function ($query) use ($search): void {
                 $query->where(function ($q) use ($search): void {
                     $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('username', 'like', "%{$search}%")
                         ->orWhere('email', 'like', "%{$search}%");
                 });
             })
@@ -93,6 +95,18 @@ class UserController extends Controller
         $data = $request->validated();
         $data['password'] = Hash::make($data['password']);
 
+        if (empty($data['username'])) {
+            $base = Str::slug(Str::before($data['email'], '@'), '_');
+            $candidate = $base ?: Str::slug($data['name'], '_');
+            $uniqueUsername = $candidate;
+            $i = 1;
+            while (User::where('username', $uniqueUsername)->exists()) {
+                $uniqueUsername = "{$candidate}_{$i}";
+                $i++;
+            }
+            $data['username'] = $uniqueUsername;
+        }
+
         if (! $currentUser?->hasGlobalAccess()) {
             if (! $currentUser?->dealer_id) {
                 abort(403, 'Akun Anda belum terhubung dengan dealer.');
@@ -124,6 +138,10 @@ class UserController extends Controller
         }
 
         $data = $request->validated();
+
+        if (array_key_exists('username', $data) && empty($data['username'])) {
+            unset($data['username']);
+        }
 
         if (! empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);

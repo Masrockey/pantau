@@ -74,6 +74,7 @@ export default function UsersIndex({
 
     const createForm = useForm({
         name: '',
+        username: '',
         email: '',
         password: '',
         role: 'dealer' as UserRole,
@@ -82,6 +83,7 @@ export default function UsersIndex({
 
     const editForm = useForm({
         name: '',
+        username: '',
         email: '',
         password: '',
         role: 'dealer' as UserRole,
@@ -137,6 +139,7 @@ export default function UsersIndex({
         createForm.clearErrors();
         createForm.setData({
             name: '',
+            username: '',
             email: '',
             password: '',
             role: 'dealer',
@@ -163,6 +166,7 @@ export default function UsersIndex({
         editForm.clearErrors();
         editForm.setData({
             name: user.name,
+            username: user.username || '',
             email: user.email,
             password: '',
             role: user.role,
@@ -456,6 +460,14 @@ export default function UsersIndex({
                                                                 <span>
                                                                     {user.name}
                                                                 </span>
+                                                                {user.username && (
+                                                                    <Badge
+                                                                        variant="outline"
+                                                                        className="h-4 px-1.5 py-0 font-mono text-[10px] text-muted-foreground"
+                                                                    >
+                                                                        @{user.username}
+                                                                    </Badge>
+                                                                )}
                                                                 {isSelf && (
                                                                     <Badge
                                                                         variant="secondary"
@@ -624,6 +636,35 @@ export default function UsersIndex({
                                 autoFocus
                             />
                             <InputError message={createForm.errors.name} />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="create_user_username">
+                                Username{' '}
+                                <span className="text-xs font-normal text-muted-foreground">
+                                    (Opsional)
+                                </span>
+                            </Label>
+                            <Input
+                                id="create_user_username"
+                                placeholder="Contoh: budi_santoso"
+                                value={createForm.data.username}
+                                onChange={(e) =>
+                                    createForm.setData(
+                                        'username',
+                                        e.target.value.toLowerCase(),
+                                    )
+                                }
+                                className={
+                                    createForm.errors.username
+                                        ? 'border-destructive'
+                                        : ''
+                                }
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                                Dapat digunakan untuk login. Jika kosong, dibuat otomatis dari email.
+                            </p>
+                            <InputError message={createForm.errors.username} />
                         </div>
 
                         <div className="space-y-2">
@@ -846,6 +887,30 @@ export default function UsersIndex({
                                 }
                             />
                             <InputError message={editForm.errors.name} />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="edit_user_username">Username</Label>
+                            <Input
+                                id="edit_user_username"
+                                placeholder="Contoh: budi_santoso"
+                                value={editForm.data.username}
+                                onChange={(e) =>
+                                    editForm.setData(
+                                        'username',
+                                        e.target.value.toLowerCase(),
+                                    )
+                                }
+                                className={
+                                    editForm.errors.username
+                                        ? 'border-destructive'
+                                        : ''
+                                }
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                                Digunakan sebagai ID login pengguna selain email.
+                            </p>
+                            <InputError message={editForm.errors.username} />
                         </div>
 
                         <div className="space-y-2">

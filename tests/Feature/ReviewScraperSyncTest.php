@@ -372,3 +372,67 @@ test('reviews:sync-server artisan command executes server sync in background', f
         'nama_reviewer' => 'Budi Santoso',
     ]);
 });
+
+test('scraper service parses Indonesian relative dates for owner response correctly', function (): void {
+    $dealer = Dealer::factory()->create();
+
+    $fakeJobResult = [
+        'data' => [
+            'profile' => [
+                'name' => 'Dealer Sukses',
+                'rating' => 4.9,
+                'reviewCount' => 10,
+            ],
+            'reviews' => [
+                [
+                    'author' => 'Ahmad Dani',
+                    'rating' => 5,
+                    'publishedAtDate' => '2026-09-01T00:00:00Z',
+                    'text' => 'Bagus sekali layanannya',
+                    'ownerResponse' => [
+                        'text' => 'Terima kasih telah berkunjung!',
+                        'date' => '10 bulan lalu',
+                    ],
+                ],
+                [
+                    'author' => 'Rina Wijaya',
+                    'rating' => 5,
+                    'publishedAtDate' => '2026-09-10T00:00:00Z',
+                    'text' => 'Mantap',
+                    'ownerResponse' => [
+                        'text' => 'Sama-sama!',
+                        'date' => 'Respon dari pemilik: 2 minggu yang lalu',
+                    ],
+                ],
+                [
+                    'author' => 'Joko Anwar',
+                    'rating' => 4,
+                    'publishedAtDate' => '2026-09-20T00:00:00Z',
+                    'text' => 'Oke sip',
+                    'ownerResponse' => [
+                        'text' => 'Siap!',
+                        'date' => null,
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    $service = new GoogleReviewScraperService;
+    $syncResult = $service->syncDealerReviewsFromJobResult($dealer, $fakeJobResult);
+
+    expect($syncResult['imported'])->toBe(3);
+
+    $ahmadReview = Review::where('dealer_id', $dealer->id)->where('nama_reviewer', 'Ahmad Dani')->first();
+    expect($ahmadReview->respon_from_owner)->toBeTrue();
+    expect($ahmadReview->tanggal_respon)->not->toBeNull();
+
+    $rinaReview = Review::where('dealer_id', $dealer->id)->where('nama_reviewer', 'Rina Wijaya')->first();
+    expect($rinaReview->respon_from_owner)->toBeTrue();
+    expect($rinaReview->tanggal_respon)->not->toBeNull();
+
+    $jokoReview = Review::where('dealer_id', $dealer->id)->where('nama_reviewer', 'Joko Anwar')->first();
+    expect($jokoReview->respon_from_owner)->toBeTrue();
+    expect($jokoReview->tanggal_respon)->not->toBeNull();
+    expect($jokoReview->tanggal_respon->format('Y-m-d'))->toBe('2026-09-20');
+});
