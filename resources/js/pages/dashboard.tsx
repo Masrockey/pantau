@@ -5,6 +5,8 @@ import {
     ArrowUpRight,
     Building2,
     CheckCircle2,
+    ChevronLeft,
+    ChevronRight,
     Clock,
     ExternalLink,
     Filter,
@@ -19,9 +21,14 @@ import {
 } from 'lucide-react';
 import React from 'react';
 import DealerMap, { MapDealer } from '@/components/dashboard/dealer-map';
+import {
+    DealerOverview,
+    DealerOverviewItem,
+    DealerOverviewSummary,
+} from '@/components/dashboard/dealer-overview';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { dashboard } from '@/routes';
 import dealersRoute from '@/routes/dealers';
 import reviewsRoute from '@/routes/reviews';
@@ -85,6 +92,10 @@ interface DashboardProps {
     criticalUnresponded: ReviewSummary[];
     dealersList: { id: number; kode_dealer: string; nama_dealer: string }[];
     mapDealers?: MapDealer[];
+    dealerOverview?: DealerOverviewItem[];
+    overviewSummary?: DealerOverviewSummary | null;
+    availableMonths?: string[];
+    activeMonth?: string | null;
     selectedDealerId: string;
     isGlobal: boolean;
     userRole: string;
@@ -103,6 +114,10 @@ export default function Dashboard({
     criticalUnresponded,
     dealersList,
     mapDealers = [],
+    dealerOverview = [],
+    overviewSummary = null,
+    availableMonths = [],
+    activeMonth = null,
     selectedDealerId,
     isGlobal,
     userRole,
@@ -115,6 +130,18 @@ export default function Dashboard({
             { preserveState: true, preserveScroll: true }
         );
     };
+
+    const [attentionPage, setAttentionPage] = React.useState(1);
+    const attentionPageSize = 5;
+    const totalAttentionPages = Math.ceil(needsAttentionDealers.length / attentionPageSize) || 1;
+    const paginatedAttentionDealers = React.useMemo(() => {
+        const start = (attentionPage - 1) * attentionPageSize;
+        return needsAttentionDealers.slice(start, start + attentionPageSize);
+    }, [needsAttentionDealers, attentionPage]);
+
+    React.useEffect(() => {
+        setAttentionPage(1);
+    }, [needsAttentionDealers.length]);
 
     const totalCalculated = metrics.total_reviews > 0 ? metrics.total_reviews : 1;
     const posPct = Math.round((metrics.positive_reviews / totalCalculated) * 100);
@@ -456,11 +483,22 @@ export default function Dashboard({
                     </Card>
                 </div>
 
+                {/* Dealer Overview Matrix & Chart Section (For Super Admin and Main Dealer) */}
+                {isGlobal && dealerOverview.length > 0 && (
+                    <DealerOverview
+                        dealers={dealerOverview}
+                        summary={overviewSummary}
+                        availableMonths={availableMonths}
+                        activeMonth={activeMonth}
+                        selectedDealerId={selectedDealerId}
+                    />
+                )}
+
                 {/* Leaderboard / Performa Showroom (Only if Global and all showrooms selected) */}
-                {isGlobal && !selectedDealerId && topDealers.length > 0 && (
+                {isGlobal && !selectedDealerId && (topDealers.length > 0 || needsAttentionDealers.length > 0) && (
                     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                         {/* Top Rated Dealers */}
-                        <Card>
+                        <Card className="flex flex-col">
                             <CardHeader className="flex flex-row items-center justify-between pb-3">
                                 <div>
                                     <CardTitle className="text-base flex items-center gap-2">
@@ -477,7 +515,7 @@ export default function Dashboard({
                                     </Link>
                                 </Button>
                             </CardHeader>
-                            <CardContent className="p-0">
+                            <CardContent className="p-0 flex-1">
                                 <div className="divide-y text-xs">
                                     {topDealers.map((d, index) => (
                                         <div key={d.id} className="flex items-center justify-between p-3.5 hover:bg-muted/30 transition-colors">
@@ -510,51 +548,108 @@ export default function Dashboard({
                             </CardContent>
                         </Card>
 
-                        {/* Dealers Needing Attention */}
-                        <Card>
+                        {/* Dealers with Rating < 4.8 */}
+                        <Card className="flex flex-col justify-between">
                             <CardHeader className="flex flex-row items-center justify-between pb-3">
                                 <div>
                                     <CardTitle className="text-base flex items-center gap-2">
                                         <AlertCircle className="size-4 text-rose-500" />
-                                        Showroom Perlu Perhatian
+                                        Showroom Rating &lt; 4.8
+                                        <Badge variant="secondary" className="ml-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900">
+                                            {needsAttentionDealers.length} Showroom
+                                        </Badge>
                                     </CardTitle>
                                     <CardDescription>
-                                        Showroom dengan rating terendah atau respons ulasan tertunda.
+                                        Semua showroom dengan rating Google Maps di bawah 4.8.
                                     </CardDescription>
                                 </div>
                                 <Button variant="ghost" size="sm" asChild className="text-xs gap-1">
-                                    <Link href={reviewsRoute.index.url({ query: { star_rate: 1 } })}>
-                                        Ulasan Kritis <ArrowUpRight className="size-3.5" />
+                                    <Link href={dealersRoute.index.url()}>
+                                        Semua Showroom <ArrowUpRight className="size-3.5" />
                                     </Link>
                                 </Button>
                             </CardHeader>
-                            <CardContent className="p-0">
-                                <div className="divide-y text-xs">
-                                    {needsAttentionDealers.map((d) => (
-                                        <div key={d.id} className="flex items-center justify-between p-3.5 hover:bg-muted/30 transition-colors">
-                                            <div>
-                                                <div className="font-semibold text-foreground flex items-center gap-2">
-                                                    <span>{d.nama_dealer}</span>
-                                                    <span className="text-[10px] text-muted-foreground font-mono">({d.kode_dealer})</span>
+                            <CardContent className="p-0 flex-1">
+                                {needsAttentionDealers.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center p-8 text-center text-xs text-muted-foreground">
+                                        <CheckCircle2 className="size-8 text-emerald-500 mb-2" />
+                                        <p className="font-medium text-foreground">Semua showroom memiliki rating ≥ 4.8</p>
+                                        <p className="mt-0.5 text-muted-foreground">Tidak ada showroom yang memiliki rating di bawah 4.8.</p>
+                                    </div>
+                                ) : (
+                                    <div className="divide-y text-xs">
+                                        {paginatedAttentionDealers.map((d) => (
+                                            <div key={d.id} className="flex items-center justify-between p-3.5 hover:bg-muted/30 transition-colors">
+                                                <div>
+                                                    <div className="font-semibold text-foreground flex items-center gap-2">
+                                                        <span>{d.nama_dealer}</span>
+                                                        <span className="text-[10px] text-muted-foreground font-mono">({d.kode_dealer})</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
+                                                        <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                                            {d.unresponded_count ?? 0} ulasan belum direspons
+                                                        </span>
+                                                        <span>•</span>
+                                                        <span>{(d.total_review ?? 0).toLocaleString('id-ID')} ulasan Maps</span>
+                                                    </div>
                                                 </div>
-                                                <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                                                    {d.unresponded_count ?? 0} ulasan belum direspons
+                                                <div className="text-right flex items-center gap-2">
+                                                    <Badge variant="outline" className="font-mono text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10 font-bold">
+                                                        ★ {d.star_rate !== null ? Number(d.star_rate).toFixed(1) : '-'}
+                                                    </Badge>
+                                                    <Button size="sm" variant="ghost" asChild className="h-7 px-2" title="Kelola Ulasan Showroom">
+                                                        <Link href={reviewsRoute.index.url({ query: { dealer_id: d.id } })}>
+                                                            <ArrowRight className="size-3.5" />
+                                                        </Link>
+                                                    </Button>
                                                 </div>
                                             </div>
-                                            <div className="text-right flex items-center gap-2">
-                                                <Badge variant="outline" className="font-mono text-amber-600 border-amber-500/30">
-                                                    ★ {d.star_rate ?? '-'}
-                                                </Badge>
-                                                <Button size="sm" variant="ghost" asChild className="h-7 px-2">
-                                                    <Link href={reviewsRoute.index.url({ query: { dealer_id: d.id } })}>
-                                                        <ArrowRight className="size-3.5" />
-                                                    </Link>
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                                        ))}
+                                    </div>
+                                )}
                             </CardContent>
+                            {needsAttentionDealers.length > attentionPageSize && (
+                                <CardFooter className="flex items-center justify-between border-t px-4 py-2.5 bg-muted/10">
+                                    <div className="text-[11px] text-muted-foreground">
+                                        Menampilkan <span className="font-medium text-foreground">{(attentionPage - 1) * attentionPageSize + 1}</span>-
+                                        <span className="font-medium text-foreground">{Math.min(attentionPage * attentionPageSize, needsAttentionDealers.length)}</span> dari{' '}
+                                        <span className="font-medium text-foreground">{needsAttentionDealers.length}</span> showroom
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setAttentionPage((p) => Math.max(p - 1, 1))}
+                                            disabled={attentionPage === 1}
+                                            className="h-7 w-7 p-0 cursor-pointer"
+                                            title="Halaman Sebelumnya"
+                                        >
+                                            <ChevronLeft className="size-3.5" />
+                                        </Button>
+                                        {Array.from({ length: totalAttentionPages }, (_, i) => i + 1).map((pageNum) => (
+                                            <Button
+                                                key={pageNum}
+                                                variant={attentionPage === pageNum ? 'default' : 'outline'}
+                                                size="sm"
+                                                onClick={() => setAttentionPage(pageNum)}
+                                                className="h-7 w-7 p-0 text-xs font-medium cursor-pointer"
+                                            >
+                                                {pageNum}
+                                            </Button>
+                                        ))}
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setAttentionPage((p) => Math.min(p + 1, totalAttentionPages))}
+                                            disabled={attentionPage === totalAttentionPages}
+                                            className="h-7 w-7 p-0 cursor-pointer"
+                                            title="Halaman Berikutnya"
+                                        >
+                                            <ChevronRight className="size-3.5" />
+                                        </Button>
+                                    </div>
+                                </CardFooter>
+                            )}
                         </Card>
                     </div>
                 )}

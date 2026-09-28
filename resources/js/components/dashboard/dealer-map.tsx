@@ -235,10 +235,10 @@ export default function DealerMap({
             if (!matchesSearch) return false;
 
             if (ratingFilter === 'high') {
-                return (d.star_rate ?? 0) >= 4.7;
+                return (d.star_rate ?? 0) >= 4.8;
             }
             if (ratingFilter === 'attention') {
-                return (d.star_rate ?? 0) < 4.7;
+                return (d.star_rate ?? 0) < 4.8;
             }
 
             return true;
@@ -500,7 +500,7 @@ export default function DealerMap({
                             }`}
                         >
                             <span>★</span>
-                            <span>≥ 4.7</span>
+                            <span>≥ 4.8</span>
                         </button>
                         <button
                             type="button"
@@ -512,7 +512,7 @@ export default function DealerMap({
                             }`}
                         >
                             <span>★</span>
-                            <span>&lt; 4.7</span>
+                            <span>&lt; 4.8</span>
                         </button>
                     </div>
 

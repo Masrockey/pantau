@@ -20,7 +20,7 @@ import syncRoute from '@/routes/reviews/sync';
 import users from '@/routes/users';
 import type { NavItem } from '@/types';
 
-const platformNavItems: NavItem[] = [
+const gbpNavItems: NavItem[] = [
     {
         title: 'Dashboard GBP',
         href: dashboard(),
@@ -55,14 +55,18 @@ const footerNavItems: NavItem[] = [];
 
 export function AppSidebar() {
     const page = usePage<{ auth?: { user?: { role?: string } } }>();
-    const isSuperAdmin = page.props?.auth?.user?.role === 'super_admin';
+    const userRole = page.props?.auth?.user?.role;
+    const isSuperAdmin = userRole === 'super_admin';
+    const isDealer = userRole === 'dealer';
 
-    const visibleManagementItems = managementNavItems.filter((item) => {
-        if (item.title === 'Sync Review') {
-            return isSuperAdmin;
-        }
-        return true;
-    });
+    const visibleManagementItems = isDealer
+        ? []
+        : managementNavItems.filter((item) => {
+            if (item.title === 'Sync Review') {
+                return isSuperAdmin;
+            }
+            return true;
+        });
 
     return (
         <Sidebar collapsible="icon" variant="inset">
@@ -79,8 +83,10 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={platformNavItems} label="Platform" />
-                <NavMain items={visibleManagementItems} label="Management" />
+                <NavMain items={gbpNavItems} label="Google Bisnis Profile" />
+                {!isDealer && visibleManagementItems.length > 0 && (
+                    <NavMain items={visibleManagementItems} label="Management" />
+                )}
             </SidebarContent>
 
             <SidebarFooter>
