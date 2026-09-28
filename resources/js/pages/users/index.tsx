@@ -1140,7 +1140,7 @@ export default function UsersIndex({
 UsersIndex.layout = {
     breadcrumbs: [
         {
-            title: 'Dashboard',
+            title: 'Dashboard GBP',
             href: dashboard(),
         },
         {

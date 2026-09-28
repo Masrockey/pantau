@@ -85,3 +85,48 @@ test('dealer user only sees their own dealer metrics on dashboard', function () 
             ->where('currentDealer.id', $dealerA->id)
         );
 });
+
+test('dashboard provides mapDealers with coordinates, address, and star review recap', function () {
+    $superAdmin = User::factory()->superAdmin()->create();
+    $dealer = Dealer::factory()->create([
+        'nama_dealer' => 'Dealer Lombok Sakti',
+        'latitude' => -8.58,
+        'longitude' => 116.12,
+        'alamat' => 'Jl. Merdeka No. 10',
+        'kelurahan' => 'Cakranegara Barat',
+        'kecamatan' => 'Cakranegara',
+        'pos_code' => '83239',
+        'no_telp_showroom' => '08123456789',
+        'star_rate' => 4.8,
+    ]);
+
+    Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'star_rate' => 5,
+        'respon_from_owner' => true,
+    ]);
+    Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'star_rate' => 4,
+        'respon_from_owner' => false,
+    ]);
+
+    $response = $this->actingAs($superAdmin)->get(route('dashboard'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->has('mapDealers')
+            ->where('mapDealers.0.nama_dealer', 'Dealer Lombok Sakti')
+            ->where('mapDealers.0.latitude', -8.58)
+            ->where('mapDealers.0.longitude', 116.12)
+            ->where('mapDealers.0.kelurahan', 'Cakranegara Barat')
+            ->where('mapDealers.0.kecamatan', 'Cakranegara')
+            ->where('mapDealers.0.pos_code', '83239')
+            ->where('mapDealers.0.no_telp_showroom', '08123456789')
+            ->where('mapDealers.0.recap.stars.5', 1)
+            ->where('mapDealers.0.recap.stars.4', 1)
+            ->where('mapDealers.0.recap.total_system_reviews', 2)
+            ->where('mapDealers.0.recap.responded_count', 1)
+        );
+});

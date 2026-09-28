@@ -2549,7 +2549,7 @@ export default function ReviewsIndex({
 ReviewsIndex.layout = {
     breadcrumbs: [
         {
-            title: 'Dashboard',
+            title: 'Dashboard GBP',
             href: dashboard(),
         },
         {

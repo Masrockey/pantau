@@ -1168,7 +1168,7 @@ export default function SyncReviewsPage({
 SyncReviewsPage.layout = {
     breadcrumbs: [
         {
-            title: 'Dashboard',
+            title: 'Dashboard GBP',
             href: dashboard(),
         },
         {

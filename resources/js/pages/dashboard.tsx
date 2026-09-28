@@ -18,6 +18,7 @@ import {
     Users,
 } from 'lucide-react';
 import React from 'react';
+import DealerMap, { MapDealer } from '@/components/dashboard/dealer-map';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -83,6 +84,7 @@ interface DashboardProps {
     latestReviews: ReviewSummary[];
     criticalUnresponded: ReviewSummary[];
     dealersList: { id: number; kode_dealer: string; nama_dealer: string }[];
+    mapDealers?: MapDealer[];
     selectedDealerId: string;
     isGlobal: boolean;
     userRole: string;
@@ -100,6 +102,7 @@ export default function Dashboard({
     latestReviews,
     criticalUnresponded,
     dealersList,
+    mapDealers = [],
     selectedDealerId,
     isGlobal,
     userRole,
@@ -135,14 +138,14 @@ export default function Dashboard({
 
     return (
         <>
-            <Head title="Dashboard - Pantau Review" />
+            <Head title="Dashboard GBP - Pantau Review" />
 
             <div className="flex h-full flex-1 flex-col gap-6 p-4 md:p-6">
                 {/* Header Section */}
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <div className="flex items-center gap-2">
-                            <h1 className="text-2xl font-bold tracking-tight">Dashboard Monitoring</h1>
+                            <h1 className="text-2xl font-bold tracking-tight">Dashboard GBP</h1>
                             {getRoleBadge(userRole)}
                         </div>
                         <p className="mt-1 text-sm text-muted-foreground">
@@ -304,6 +307,14 @@ export default function Dashboard({
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* Dealer Pin Point Map Section */}
+                {mapDealers.length > 0 && (
+                    <DealerMap
+                        dealers={mapDealers}
+                        selectedDealerId={selectedDealerId}
+                    />
+                )}
 
                 {/* Middle Grid: Rating Breakdown & Response SLA */}
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -673,7 +684,7 @@ export default function Dashboard({
 Dashboard.layout = {
     breadcrumbs: [
         {
-            title: 'Dashboard',
+            title: 'Dashboard GBP',
             href: dashboard(),
         },
     ],

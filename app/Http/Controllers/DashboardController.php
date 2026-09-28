@@ -117,6 +117,88 @@ class DashboardController extends Controller
             ? Dealer::orderBy('nama_dealer')->get(['id', 'kode_dealer', 'nama_dealer'])
             : [];
 
+        $mapDealersQuery = Dealer::query()
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude');
+
+        if (! $isGlobal && $dealerScopeId) {
+            $mapDealersQuery->where('id', $dealerScopeId);
+        }
+
+        $dealersForMap = $mapDealersQuery->get([
+            'id',
+            'kode_dealer',
+            'nama_dealer',
+            'latitude',
+            'longitude',
+            'alamat',
+            'kelurahan',
+            'kecamatan',
+            'pos_code',
+            'no_telp_showroom',
+            'star_rate',
+            'total_review',
+            'link_google_maps',
+        ]);
+
+        $dealerIdsForMap = $dealersForMap->pluck('id')->all();
+
+        $reviewsByDealer = Review::query()
+            ->selectRaw('dealer_id, round(star_rate) as star, count(*) as count, sum(case when respon_from_owner = 1 then 1 else 0 end) as responded_count')
+            ->whereIn('dealer_id', $dealerIdsForMap)
+            ->whereNotNull('star_rate')
+            ->groupByRaw('dealer_id, round(star_rate)')
+            ->get()
+            ->groupBy('dealer_id');
+
+        $mapDealers = $dealersForMap->map(function (Dealer $dealer) use ($reviewsByDealer): array {
+            $dealerReviews = $reviewsByDealer->get($dealer->id, collect());
+
+            $stars = [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0];
+            $systemTotalReviews = 0;
+            $systemRespondedCount = 0;
+
+            foreach ($dealerReviews as $row) {
+                $star = (int) $row->star;
+                $count = (int) $row->count;
+                if ($star >= 1 && $star <= 5) {
+                    $stars[$star] = $count;
+                }
+                $systemTotalReviews += $count;
+                $systemRespondedCount += (int) $row->responded_count;
+            }
+
+            $responseRate = $systemTotalReviews > 0
+                ? round(($systemRespondedCount / $systemTotalReviews) * 100, 1)
+                : 0;
+
+            return [
+                'id' => $dealer->id,
+                'kode_dealer' => $dealer->kode_dealer,
+                'nama_dealer' => $dealer->nama_dealer,
+                'latitude' => (float) $dealer->latitude,
+                'longitude' => (float) $dealer->longitude,
+                'alamat' => $dealer->alamat,
+                'kelurahan' => $dealer->kelurahan,
+                'kecamatan' => $dealer->kecamatan,
+                'pos_code' => $dealer->pos_code,
+                'no_telp_showroom' => $dealer->no_telp_showroom,
+                'star_rate' => $dealer->star_rate !== null ? (float) $dealer->star_rate : null,
+                'total_review' => (int) ($dealer->total_review ?? 0),
+                'link_google_maps' => $dealer->link_google_maps,
+                'recap' => [
+                    'stars' => $stars,
+                    'total_system_reviews' => $systemTotalReviews,
+                    'total_maps_reviews' => (int) ($dealer->total_review ?? $systemTotalReviews),
+                    'responded_count' => $systemRespondedCount,
+                    'response_rate' => $responseRate,
+                    'positive_reviews' => $stars[5] + $stars[4],
+                    'neutral_reviews' => $stars[3],
+                    'critical_reviews' => $stars[2] + $stars[1],
+                ],
+            ];
+        })->values();
+
         return Inertia::render('dashboard', [
             'metrics' => [
                 'total_reviews' => $totalReviews,
@@ -137,6 +219,7 @@ class DashboardController extends Controller
             'latestReviews' => $latestReviews,
             'criticalUnresponded' => $criticalUnresponded,
             'dealersList' => $dealersList,
+            'mapDealers' => $mapDealers,
             'selectedDealerId' => $dealerScopeId ? (string) $dealerScopeId : '',
             'isGlobal' => $isGlobal,
             'userRole' => $user?->role?->value ?? (string) ($user?->role ?? ''),

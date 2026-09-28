@@ -22,7 +22,7 @@ import type { NavItem } from '@/types';
 
 const platformNavItems: NavItem[] = [
     {
-        title: 'Dashboard',
+        title: 'Dashboard GBP',
         href: dashboard(),
         icon: LayoutGrid,
     },

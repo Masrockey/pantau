@@ -1830,7 +1830,7 @@ export default function DealersIndex({
 DealersIndex.layout = {
     breadcrumbs: [
         {
-            title: 'Dashboard',
+            title: 'Dashboard GBP',
             href: dashboard(),
         },
         {
