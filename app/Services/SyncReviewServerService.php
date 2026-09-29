@@ -37,10 +37,37 @@ class SyncReviewServerService
             'bulkProgress' => null,
             'syncResult' => null,
             'startedAt' => null,
+            'heartbeatAt' => null,
             'target' => null,
         ];
 
-        return Cache::get(self::CACHE_STATUS_KEY, $default);
+        $status = Cache::get(self::CACHE_STATUS_KEY, $default);
+
+        // Auto-heal stale or orphaned background processes
+        if (in_array($status['status'] ?? 'idle', ['starting', 'running'], true)) {
+            $isHealthy = $this->scraperService->isHealthy();
+            $now = time();
+            $lastActivity = (int) ($status['heartbeatAt'] ?? $status['startedAt'] ?? $now);
+
+            // If scraper is offline while job was running/starting
+            if (! $isHealthy && ($now - $lastActivity) > 5) {
+                $status['status'] = 'failed';
+                $status['syncError'] = 'Service Scraper API di port 3000 tidak aktif (Offline).';
+                $status['syncMessage'] = 'Sinkronisasi terhenti: Service scraper di port 3000 offline.';
+                Cache::put(self::CACHE_STATUS_KEY, $status, now()->addDays(self::CACHE_TTL_DAYS));
+                Cache::forget(self::CACHE_CANCEL_KEY);
+            }
+            // If process hasn't updated heartbeat for more than 45 seconds
+            elseif (($now - $lastActivity) > 45) {
+                $status['status'] = 'failed';
+                $status['syncError'] = 'Proses background terhenti atau timeout (tidak ada respon selama > 45 detik).';
+                $status['syncMessage'] = 'Sinkronisasi terhenti karena proses server tidak merespon.';
+                Cache::put(self::CACHE_STATUS_KEY, $status, now()->addDays(self::CACHE_TTL_DAYS));
+                Cache::forget(self::CACHE_CANCEL_KEY);
+            }
+        }
+
+        return $status;
     }
 
     /**
@@ -92,7 +119,19 @@ class SyncReviewServerService
      */
     public function updateStatus(array $data): void
     {
-        $current = $this->getStatus();
+        $default = [
+            'status' => 'idle',
+            'syncMessage' => '',
+            'syncError' => null,
+            'progressPercent' => 0,
+            'bulkProgress' => null,
+            'syncResult' => null,
+            'startedAt' => null,
+            'heartbeatAt' => null,
+            'target' => null,
+        ];
+
+        $current = Cache::get(self::CACHE_STATUS_KEY, $default);
         $merged = array_merge($current, $data);
 
         Cache::put(self::CACHE_STATUS_KEY, $merged, now()->addDays(self::CACHE_TTL_DAYS));
@@ -112,8 +151,10 @@ class SyncReviewServerService
             'bulkProgress' => null,
             'syncResult' => null,
             'startedAt' => null,
+            'heartbeatAt' => null,
             'target' => null,
         ], now()->addDays(self::CACHE_TTL_DAYS));
+        $this->addLog('Status monitoring sinkronisasi direset ke Siap (Idle).', 'info');
     }
 
     /**
@@ -133,6 +174,22 @@ class SyncReviewServerService
         $this->addLog('Permintaan pembatalan diterima. Menunggu proses saat ini berhenti...', 'warn');
         $this->updateStatus([
             'syncMessage' => 'Menghentikan sinkronisasi setelah proses saat ini selesai...',
+            'heartbeatAt' => time(),
+        ]);
+    }
+
+    /**
+     * Immediately force stop the server sync session and mark as cancelled.
+     */
+    public function forceStop(): void
+    {
+        Cache::forget(self::CACHE_CANCEL_KEY);
+        $this->addLog('Sinkronisasi dihentikan secara paksa oleh pengguna.', 'warn');
+        $this->updateStatus([
+            'status' => 'cancelled',
+            'syncMessage' => 'Sinkronisasi berhasil dihentikan secara paksa.',
+            'progressPercent' => 0,
+            'heartbeatAt' => time(),
         ]);
     }
 
@@ -156,6 +213,7 @@ class SyncReviewServerService
             'bulkProgress' => null,
             'syncResult' => null,
             'startedAt' => time(),
+            'heartbeatAt' => time(),
             'target' => $target,
         ]);
 
@@ -216,12 +274,23 @@ class SyncReviewServerService
         $this->updateStatus([
             'status' => 'running',
             'progressPercent' => 10,
+            'heartbeatAt' => time(),
         ]);
 
-        if ($target === 'all') {
-            $this->executeBulkSync($limit, $sort, $useProxy);
-        } else {
-            $this->executeSingleSync((int) $target, $limit, $sort, $useProxy);
+        try {
+            if ($target === 'all') {
+                $this->executeBulkSync($limit, $sort, $useProxy);
+            } else {
+                $this->executeSingleSync((int) $target, $limit, $sort, $useProxy);
+            }
+        } catch (\Throwable $e) {
+            $errMsg = $e->getMessage();
+            $this->addLog("[Error] {$errMsg}", 'error');
+            $this->updateStatus([
+                'status' => 'failed',
+                'syncError' => $errMsg,
+                'syncMessage' => $errMsg,
+            ]);
         }
     }
 
@@ -261,6 +330,7 @@ class SyncReviewServerService
         $this->updateStatus([
             'syncMessage' => $startMsg,
             'progressPercent' => 20,
+            'heartbeatAt' => time(),
         ]);
 
         try {
@@ -277,6 +347,7 @@ class SyncReviewServerService
             $this->updateStatus([
                 'syncMessage' => $runMsg,
                 'progressPercent' => 35,
+                'heartbeatAt' => time(),
             ]);
 
             $startTime = time();
@@ -294,10 +365,17 @@ class SyncReviewServerService
                     return;
                 }
 
+                if (! $this->scraperService->isHealthy()) {
+                    throw new Exception('Koneksi ke service scraper (port 3000) terputus saat proses scraping berlangsung.');
+                }
+
                 sleep(2);
                 $elapsed = time() - $startTime;
                 $pct = min(90, 35 + (int) ($elapsed / 3));
-                $this->updateStatus(['progressPercent' => $pct]);
+                $this->updateStatus([
+                    'progressPercent' => $pct,
+                    'heartbeatAt' => time(),
+                ]);
 
                 $statusData = $this->scraperService->getJobStatus($jobId);
                 $status = $statusData['status'] ?? 'unknown';
@@ -334,7 +412,7 @@ class SyncReviewServerService
             }
 
             throw new Exception("Scraping timeout melebihi batas {$maxWait} detik.");
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             $errMsg = $e->getMessage();
             $this->addLog("[Error] {$errMsg}", 'error');
             $this->updateStatus([
@@ -378,6 +456,8 @@ class SyncReviewServerService
         $processedCount = 0;
 
         foreach ($dealers as $index => $dealer) {
+            $this->updateStatus(['heartbeatAt' => time()]);
+
             if ($this->isCancelRequested()) {
                 $this->addLog('Sinkronisasi massal dihentikan oleh pengguna.', 'warn');
                 $finalMsg = "Sinkronisasi dihentikan. Berhasil memproses {$processedCount} dari {$totalDealers} showroom.";
@@ -394,6 +474,10 @@ class SyncReviewServerService
                 ]);
 
                 return;
+            }
+
+            if (! $this->scraperService->isHealthy()) {
+                throw new Exception('Proses massal dihentikan karena service scraper offline.');
             }
 
             $currentStep = $index + 1;
@@ -434,7 +518,12 @@ class SyncReviewServerService
                         break;
                     }
 
+                    if (! $this->scraperService->isHealthy()) {
+                        throw new Exception('Koneksi ke service scraper (port 3000) terputus saat proses scraping berlangsung.');
+                    }
+
                     sleep(2);
+                    $this->updateStatus(['heartbeatAt' => time()]);
                     $statusData = $this->scraperService->getJobStatus($jobId);
                     $status = $statusData['status'] ?? 'unknown';
 
@@ -463,8 +552,11 @@ class SyncReviewServerService
                         $this->addLog("[Gagal] {$dealer->nama_dealer}: ".($statusData['error'] ?? 'Scraper gagal'), 'warn');
                     }
                 }
-            } catch (Exception $e) {
+            } catch (\Throwable $e) {
                 $this->addLog("[Kendala] {$dealer->nama_dealer}: ".$e->getMessage(), 'warn');
+                if (! $this->scraperService->isHealthy()) {
+                    throw new Exception('Proses massal dihentikan karena service scraper offline.');
+                }
             }
         }
 

@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
@@ -221,6 +222,18 @@ class ReviewController extends Controller
         $dealersWithoutMaps = $dealers->count() - $dealersWithMaps;
         $totalReviewsInDb = (int) $dealers->sum('reviews_count');
 
+        // Auto-trigger due schedules if server is idle
+        if (($syncService->getStatus()['status'] ?? 'idle') === 'idle') {
+            $hasDueSchedule = ScrapingSchedule::query()
+                ->where('is_active', true)
+                ->where('next_run_at', '<=', now())
+                ->exists();
+
+            if ($hasDueSchedule) {
+                Artisan::call('reviews:run-schedules');
+            }
+        }
+
         $schedules = ScrapingSchedule::query()
             ->with('dealer:id,kode_dealer,nama_dealer')
             ->orderByDesc('is_active')
@@ -336,6 +349,19 @@ class ReviewController extends Controller
             ], 403);
         }
 
+        // Auto-trigger due schedules if server is idle
+        $currentStatus = $syncService->getStatus();
+        if (($currentStatus['status'] ?? 'idle') === 'idle') {
+            $hasDueSchedule = ScrapingSchedule::query()
+                ->where('is_active', true)
+                ->where('next_run_at', '<=', now())
+                ->exists();
+
+            if ($hasDueSchedule) {
+                Artisan::call('reviews:run-schedules');
+            }
+        }
+
         return response()->json([
             'status' => $syncService->getStatus(),
             'logs' => $syncService->getLogs(),
@@ -345,12 +371,26 @@ class ReviewController extends Controller
     /**
      * Request cancellation of the server sync process.
      */
-    public function cancelSync(Request $request, SyncReviewServerService $syncService): JsonResponse
-    {
+    public function cancelSync(
+        Request $request,
+        SyncReviewServerService $syncService,
+        GoogleReviewScraperService $scraperService
+    ): JsonResponse {
         if (! $request->user()?->isSuperAdmin()) {
             return response()->json([
                 'message' => 'Hanya Super Admin yang dapat membatalkan sinkronisasi.',
             ], 403);
+        }
+
+        $force = $request->boolean('force');
+        if ($force || ! $scraperService->isHealthy()) {
+            $syncService->forceStop();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Proses sinkronisasi server berhasil dihentikan.',
+                'status' => $syncService->getStatus(),
+            ]);
         }
 
         $syncService->requestCancel();

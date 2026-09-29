@@ -519,6 +519,50 @@ export default function SyncReviewsPage({
         };
     }, []);
 
+    // Background ticker to check for due schedules and monitor background server execution
+    useEffect(() => {
+        const scheduleTicker = setInterval(async () => {
+            const now = new Date();
+            const hasDueSchedule = scheduleList.some(
+                (s) => s.is_active && s.next_run_at && new Date(s.next_run_at) <= now
+            );
+
+            if (hasDueSchedule || syncState === 'starting' || syncState === 'running') {
+                try {
+                    const res = await fetch(syncRoute.progress.url(), {
+                        headers: { Accept: 'application/json' },
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        const status: SyncServerStatus = data.status || {};
+                        if (status.status) {
+                            setSyncState(status.status);
+                            setSyncMessage(status.syncMessage || '');
+                            setSyncError(status.syncError ?? null);
+                            setProgressPercent(status.progressPercent ?? 0);
+                            setBulkProgress(status.bulkProgress ?? null);
+                            setSyncResult(status.syncResult ?? null);
+
+                            if (status.status === 'starting' || status.status === 'running') {
+                                if (!pollRef.current) {
+                                    startPolling();
+                                }
+                            } else if (pollRef.current) {
+                                clearInterval(pollRef.current);
+                                pollRef.current = null;
+                            }
+                            router.reload({ only: ['schedules', 'serverStatus'] });
+                        }
+                    }
+                } catch {
+                    // Ignore transient errors
+                }
+            }
+        }, 10000);
+
+        return () => clearInterval(scheduleTicker);
+    }, [scheduleList, syncState]);
+
     // Start background sync on server
     const handleStartServerSync = async (dealerId: string, customLimit?: number) => {
         if (scraperOnline === false) {
@@ -592,7 +636,7 @@ export default function SyncReviewsPage({
     };
 
     // Abort handler
-    const handleCancelSync = async () => {
+    const handleCancelSync = async (force = false) => {
         const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
         try {
             const res = await fetch(syncRoute.cancel.url(), {
@@ -602,10 +646,25 @@ export default function SyncReviewsPage({
                     'X-CSRF-TOKEN': csrfToken,
                     Accept: 'application/json',
                 },
+                body: JSON.stringify({ force }),
             });
+            const data = await res.json();
             if (res.ok) {
-                toast.info('Permintaan pembatalan telah dikirim ke server.');
-                setSyncMessage('Mengirim sinyal pembatalan ke server...');
+                if (force || scraperOnline === false) {
+                    toast.info(data.message || 'Proses sinkronisasi berhasil dihentikan.');
+                    setSyncState('cancelled');
+                    setSyncMessage(data.message || 'Sinkronisasi berhasil dihentikan.');
+                    if (pollRef.current) {
+                        clearInterval(pollRef.current);
+                        pollRef.current = null;
+                    }
+                    router.reload({ only: ['serverStatus'] });
+                } else {
+                    toast.info('Permintaan pembatalan telah dikirim ke server.');
+                    setSyncMessage('Mengirim sinyal pembatalan ke server...');
+                }
+            } else {
+                toast.error(data.message || 'Gagal mengirim sinyal pembatalan ke server.');
             }
         } catch {
             toast.error('Gagal mengirim sinyal pembatalan ke server.');
@@ -711,7 +770,7 @@ export default function SyncReviewsPage({
                             <RefreshCw
                                 className={`size-3.5 ${isCheckingHealth ? 'animate-spin' : ''}`}
                             />
-                            Cek Scraper
+                            Cek Server
                         </Button>
                         <Button variant="outline" size="sm" asChild className="gap-2">
                             <Link href={reviewsRoute.index.url()}>
@@ -754,10 +813,10 @@ export default function SyncReviewsPage({
                             <div className="flex items-center gap-2">
                                 <span className="font-semibold text-sm">
                                     {scraperOnline === true
-                                        ? 'Scraper Service Siap (Online)'
+                                        ? 'Server Google Online'
                                         : scraperOnline === false
-                                          ? 'Scraper Service Tidak Aktif (Offline)'
-                                          : 'Memeriksa Scraper Service...'}
+                                          ? 'Server Google Tidak Aktif'
+                                          : 'Memeriksa Server Google...'}
                                 </span>
                                 {scraperOnline === true && (
                                     <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -765,10 +824,10 @@ export default function SyncReviewsPage({
                             </div>
                             <p className="text-xs text-muted-foreground">
                                 {scraperOnline === true
-                                    ? 'API Scraper di localhost:3000 aktif dan siap mengekstrak data ulasan Playwright.'
+                                    ? 'API Server aktif dan siap mengekstrak data ulasan.'
                                     : scraperOnline === false
-                                      ? 'Pastikan scraper service di port 3000 sudah dinyalakan sebelum memulai sinkronisasi.'
-                                      : 'Mengecek ketersediaan port 3000 & konektivitas backend...'}
+                                      ? 'Pastikan Google service sudah dinyalakan sebelum memulai sinkronisasi.'
+                                      : 'Mengecek konektivitas backend...'}
                             </p>
                         </div>
                     </div>
@@ -788,17 +847,8 @@ export default function SyncReviewsPage({
                             variant={scraperOnline ? 'default' : 'secondary'}
                             className="font-mono text-[11px]"
                         >
-                            {scraperOnline ? 'Port 3000 OK' : 'Port 3000 Down'}
+                            {scraperOnline ? 'Server OK' : 'Server Down'}
                         </Badge>
-                    </div>
-                </div>
-
-                {/* Server Background Process Guarantee Banner */}
-                <div className="flex items-center gap-3 rounded-lg border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-xs text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/20 dark:text-blue-300">
-                    <Info className="size-4 shrink-0 text-blue-500" />
-                    <div>
-                        <span className="font-semibold">Server Background Process: </span>
-                        Proses scraping berjalan mandiri di latar belakang server. Jika browser ditutup atau PC dimatikan, proses tetap berjalan tanpa terputus dan progres dapat dipantau secara real-time dari PC atau perangkat mana saja.
                     </div>
                 </div>
 
@@ -1038,15 +1088,27 @@ export default function SyncReviewsPage({
                                     {/* Submit / Cancel Buttons */}
                                     <div className="pt-2">
                                         {isRunning ? (
-                                            <Button
-                                                type="button"
-                                                variant="destructive"
-                                                onClick={handleCancelSync}
-                                                className="w-full gap-2"
-                                            >
-                                                <Square className="size-4" />
-                                                Hentikan Sinkronisasi
-                                            </Button>
+                                            <div className="flex flex-col gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="destructive"
+                                                    onClick={() => handleCancelSync(false)}
+                                                    className="w-full gap-2 shadow-sm font-medium"
+                                                >
+                                                    <Square className="size-4" />
+                                                    Hentikan Sinkronisasi
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => handleCancelSync(true)}
+                                                    className="w-full gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                                                >
+                                                    <RotateCcw className="size-3.5" />
+                                                    Paksa Berhenti & Reset Status
+                                                </Button>
+                                            </div>
                                         ) : (
                                             <Button
                                                 type="submit"
@@ -1080,6 +1142,19 @@ export default function SyncReviewsPage({
                                     </CardDescription>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    {isRunning && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleCancelSync(true)}
+                                            className="h-7 px-2 text-xs text-destructive border-destructive/30 hover:bg-destructive/10 gap-1"
+                                            title="Paksa hentikan proses sekarang juga dan kembalikan status"
+                                        >
+                                            <Square className="size-3 fill-current" />
+                                            Paksa Stop
+                                        </Button>
+                                    )}
                                     {syncState !== 'idle' && !isRunning && (
                                         <Button
                                             type="button"
@@ -1122,6 +1197,27 @@ export default function SyncReviewsPage({
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-4">
+                                {scraperOnline === false && isRunning && (
+                                    <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-destructive flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                        <div className="flex items-start gap-2.5">
+                                            <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                                            <div className="text-xs">
+                                                <span className="font-semibold block">Scraper Service Tidak Aktif (Port 3000 Down)</span>
+                                                <span className="text-destructive/80">Proses tidak dapat berlanjut karena service scraper offline. Klik tombol untuk menghentikan paksa.</span>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={() => handleCancelSync(true)}
+                                            className="shrink-0 h-7 text-xs font-semibold gap-1.5 shadow-sm"
+                                        >
+                                            <Square className="size-3 fill-current" />
+                                            Paksa Hentikan & Reset
+                                        </Button>
+                                    </div>
+                                )}
                                 {/* Progress bar */}
                                 <div className="space-y-1.5">
                                     <div className="flex items-center justify-between text-xs text-muted-foreground">
