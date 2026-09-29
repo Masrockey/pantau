@@ -25,6 +25,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('reviews/sync/reset', [ReviewController::class, 'resetSync'])->name('reviews.sync.reset');
     Route::post('reviews/sync/clear-logs', [ReviewController::class, 'clearSyncLogs'])->name('reviews.sync.clear-logs');
     Route::get('reviews/sync/{jobId}', [ReviewController::class, 'checkSyncStatus'])->name('reviews.sync.status');
+    Route::get('reviews/template', [ReviewController::class, 'template'])->name('reviews.template');
+    Route::post('reviews/import', [ReviewController::class, 'import'])->name('reviews.import');
     Route::resource('reviews', ReviewController::class)->except(['create', 'show', 'edit']);
 });
 

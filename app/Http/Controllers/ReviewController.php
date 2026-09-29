@@ -2,18 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ImportReviewRequest;
 use App\Http\Requests\StoreReviewRequest;
 use App\Http\Requests\UpdateReviewRequest;
 use App\Models\Dealer;
 use App\Models\Review;
 use App\Services\GoogleReviewScraperService;
+use App\Services\ReviewExcelService;
 use App\Services\SyncReviewServerService;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
+use Throwable;
 
 class ReviewController extends Controller
 {
@@ -446,5 +451,63 @@ class ReviewController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Download the review Excel template.
+     */
+    public function template(Request $request, ReviewExcelService $excelService): SymfonyResponse
+    {
+        $content = $excelService->generateTemplateXlsx();
+
+        return response($content, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="template_review.xlsx"',
+            'Content-Length' => (string) strlen($content),
+        ]);
+    }
+
+    /**
+     * Import reviews from an uploaded Excel or CSV file.
+     */
+    public function import(ImportReviewRequest $request, ReviewExcelService $excelService): RedirectResponse
+    {
+        $user = $request->user();
+        $isGlobal = $user?->hasGlobalAccess() ?? false;
+        $scopedDealerId = ! $isGlobal ? $user?->dealer_id : null;
+
+        if (! $isGlobal && ! $scopedDealerId) {
+            abort(403, 'Anda tidak memiliki hak akses untuk mengimpor ulasan.');
+        }
+
+        /** @var UploadedFile $file */
+        $file = $request->file('file');
+        $updateExisting = $request->boolean('update_existing', true);
+
+        try {
+            $result = $excelService->import($file, $updateExisting, $scopedDealerId);
+
+            $message = "Import ulasan berhasil: {$result['imported']} ulasan baru ditambahkan";
+            if ($result['updated'] > 0) {
+                $message .= ", {$result['updated']} data diperbarui otomatis";
+            }
+            $message .= '.';
+
+            if (! empty($result['errors'])) {
+                $message .= ' Catatan: '.implode(' ', array_slice($result['errors'], 0, 3));
+            }
+
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => $message,
+            ]);
+        } catch (Throwable $e) {
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => 'Gagal mengimpor ulasan: '.$e->getMessage(),
+            ]);
+        }
+
+        return to_route('reviews.index');
     }
 }

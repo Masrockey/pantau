@@ -4,9 +4,11 @@ import {
     Calendar,
     CheckCircle2,
     Clock,
+    Download,
     Edit2,
     ExternalLink,
     Eye,
+    FileSpreadsheet,
     Filter,
     Loader2,
     MessageSquare,
@@ -16,6 +18,7 @@ import {
     Sparkles,
     Star,
     Trash2,
+    Upload,
     X,
 } from 'lucide-react';
 import React, { useState } from 'react';
@@ -77,7 +80,10 @@ export default function ReviewsIndex({
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const [selectedReview, setSelectedReview] = useState<Review | null>(null);
+    const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
     // Scraper Sync State
     const [isSyncOpen, setIsSyncOpen] = useState(false);
@@ -150,6 +156,76 @@ export default function ReviewsIndex({
         respon: '',
         google_review_url: '',
     });
+
+    const importForm = useForm<{
+        file: File | null;
+        update_existing: boolean;
+    }>({
+        file: null,
+        update_existing: true,
+    });
+
+    const formatFileSize = (bytes: number): string => {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    };
+
+    const handleOpenImport = () => {
+        importForm.reset();
+        importForm.clearErrors();
+        importForm.setData({
+            file: null,
+            update_existing: true,
+        });
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+        setIsImportOpen(true);
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files.length > 0) {
+            importForm.setData('file', e.target.files[0]);
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            importForm.setData('file', e.dataTransfer.files[0]);
+        }
+    };
+
+    const handleRemoveFile = () => {
+        importForm.setData('file', null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const handleSubmitImport = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!importForm.data.file) return;
+
+        importForm.post(reviewsRoute.import.url(), {
+            forceFormData: true,
+            onSuccess: () => {
+                setIsImportOpen(false);
+                importForm.reset();
+            },
+        });
+    };
 
     const applyFilters = (newFilters: {
         search?: string;
@@ -619,13 +695,23 @@ export default function ReviewsIndex({
                             </Button>
                         )}
                         {canManageAll && (
-                            <Button
-                                onClick={handleOpenCreate}
-                                className="shrink-0 gap-2"
-                            >
-                                <Plus className="size-4" />
-                                Tambah Review
-                            </Button>
+                            <>
+                                <Button
+                                    variant="outline"
+                                    onClick={handleOpenImport}
+                                    className="shrink-0 gap-2"
+                                >
+                                    <Upload className="size-4" />
+                                    Import Review
+                                </Button>
+                                <Button
+                                    onClick={handleOpenCreate}
+                                    className="shrink-0 gap-2"
+                                >
+                                    <Plus className="size-4" />
+                                    Tambah Review
+                                </Button>
+                            </>
                         )}
                     </div>
                 </div>
@@ -2540,6 +2626,263 @@ export default function ReviewsIndex({
                             </DialogFooter>
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal Import Review */}
+            <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+                <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Import Data Review</DialogTitle>
+                        <DialogDescription>
+                            Unggah file spreadsheet Excel (.xlsx) atau CSV untuk
+                            menambahkan ulasan baru atau memperbarui data ulasan yang sudah ada secara otomatis.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form
+                        onSubmit={handleSubmitImport}
+                        className="space-y-4 py-2"
+                    >
+                        {/* Download Template Banner */}
+                        <div className="flex items-center justify-between rounded-lg border border-sidebar-border/80 bg-muted/40 p-3">
+                            <div className="space-y-0.5 pr-2">
+                                <p className="text-xs font-semibold text-foreground">
+                                    Belum memiliki format template Excel?
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                    Unduh template resmi ulasan dengan susunan kolom
+                                    yang telah sesuai sistem.
+                                </p>
+                            </div>
+                            <a
+                                href={reviewsRoute.template.url()}
+                                download="template_review.xlsx"
+                                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-sidebar-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground shadow-2xs transition-colors hover:border-primary/50 hover:bg-accent hover:text-primary dark:border-sidebar-border"
+                            >
+                                <Download className="size-3.5 text-primary" />
+                                Unduh Template
+                            </a>
+                        </div>
+
+                        {/* Drag & Drop File Upload Area */}
+                        <div className="space-y-2">
+                            <Label>Pilih File Excel (.xlsx / .csv)</Label>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".xlsx,.xls,.csv"
+                                onChange={handleFileChange}
+                                className="hidden"
+                            />
+
+                            {!importForm.data.file ? (
+                                <div
+                                    onDragOver={handleDragOver}
+                                    onDragLeave={handleDragLeave}
+                                    onDrop={handleDrop}
+                                    onClick={() =>
+                                        fileInputRef.current?.click()
+                                    }
+                                    className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+                                        isDragging
+                                            ? 'border-primary bg-primary/5'
+                                            : 'border-sidebar-border/80 hover:border-primary/50 hover:bg-muted/30'
+                                    }`}
+                                >
+                                    <div className="flex size-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+                                        <Upload className="size-5" />
+                                    </div>
+                                    <p className="mt-2 text-xs font-medium text-foreground">
+                                        Klik untuk memilih file atau seret file
+                                        ke sini
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-muted-foreground">
+                                        Mendukung file Excel .xlsx, .xls atau
+                                        .csv (Maks. 50MB)
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-between rounded-lg border border-sidebar-border bg-card p-3 shadow-2xs">
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
+                                            <FileSpreadsheet className="size-5" />
+                                        </div>
+                                        <div className="overflow-hidden">
+                                            <p className="truncate text-xs font-medium text-foreground">
+                                                {importForm.data.file.name}
+                                            </p>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                {formatFileSize(
+                                                    importForm.data.file.size,
+                                                )}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={handleRemoveFile}
+                                        className="size-8 p-0 text-muted-foreground hover:text-destructive"
+                                        title="Hapus file"
+                                    >
+                                        <X className="size-4" />
+                                    </Button>
+                                </div>
+                            )}
+
+                            <InputError message={importForm.errors.file} />
+                        </div>
+
+                        {/* Panduan Format Kolom */}
+                        <div className="space-y-1.5 rounded-lg border border-sidebar-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
+                            <p className="text-[11px] font-semibold tracking-wider text-foreground uppercase">
+                                Panduan Susunan Kolom Excel:
+                            </p>
+                            <ul className="list-disc space-y-0.5 pl-4 text-[11px]">
+                                <li>
+                                    <strong className="text-foreground">
+                                        Kode Dealer
+                                    </strong>
+                                    : Wajib, kode dealer tujuan ulasan (contoh:{' '}
+                                    <code className="rounded bg-muted px-1 font-mono">
+                                        DLR001
+                                    </code>
+                                    ).
+                                </li>
+                                <li>
+                                    <strong className="text-foreground">
+                                        Nama Reviewer
+                                    </strong>
+                                    : Nama pelanggan pemberi ulasan (contoh:{' '}
+                                    <code className="rounded bg-muted px-1">
+                                        Budi Santoso
+                                    </code>
+                                    ).
+                                </li>
+                                <li>
+                                    <strong className="text-foreground">
+                                        Tanggal Review
+                                    </strong>
+                                    : Tanggal ulasan dibuat (format:{' '}
+                                    <code className="rounded bg-muted px-1 font-mono">
+                                        YYYY-MM-DD
+                                    </code>{' '}
+                                    atau{' '}
+                                    <code className="rounded bg-muted px-1 font-mono">
+                                        DD/MM/YYYY
+                                    </code>
+                                    ).
+                                </li>
+                                <li>
+                                    <strong className="text-foreground">
+                                        Star Rate
+                                    </strong>
+                                    : Nilai rating bintang 1.0 sampai 5.0 (contoh:{' '}
+                                    <code className="rounded bg-muted px-1 font-mono">
+                                        5.0
+                                    </code>
+                                    ).
+                                </li>
+                                <li>
+                                    <strong className="text-foreground">
+                                        Review
+                                    </strong>
+                                    : Teks isi komentar ulasan konsumen.
+                                </li>
+                                <li>
+                                    <strong className="text-foreground">
+                                        Respon From Owner
+                                    </strong>
+                                    : Status respon balasan (contoh:{' '}
+                                    <code className="rounded bg-muted px-1 font-mono">
+                                        Ya
+                                    </code>{' '}
+                                    atau{' '}
+                                    <code className="rounded bg-muted px-1 font-mono">
+                                        Tidak
+                                    </code>
+                                    ).
+                                </li>
+                                <li>
+                                    <strong className="text-foreground">
+                                        Tanggal Respon
+                                    </strong>
+                                    : Tanggal tanggapan dari owner/dealer diberikan.
+                                </li>
+                                <li>
+                                    <strong className="text-foreground">
+                                        Respon
+                                    </strong>
+                                    : Teks isi tanggapan atau balasan resmi dari showroom.
+                                </li>
+                                <li>
+                                    <strong className="text-foreground">
+                                        Google Review URL
+                                    </strong>
+                                    : Tautan ulasan Google Maps (opsional).
+                                </li>
+                            </ul>
+                        </div>
+
+                        {/* Checkbox Update Existing */}
+                        <div className="flex items-start space-x-2 pt-1">
+                            <Checkbox
+                                id="update_existing"
+                                checked={importForm.data.update_existing}
+                                onCheckedChange={(checked) =>
+                                    importForm.setData(
+                                        'update_existing',
+                                        checked === true,
+                                    )
+                                }
+                                className="mt-0.5"
+                            />
+                            <div className="space-y-0.5">
+                                <Label
+                                    htmlFor="update_existing"
+                                    className="cursor-pointer text-xs font-medium text-foreground"
+                                >
+                                    Perbarui otomatis data ulasan yang sudah ada
+                                </Label>
+                                <p className="text-[11px] text-muted-foreground">
+                                    Jika dicentang, ulasan yang cocok (berdasarkan URL review, nama reviewer pada dealer, atau isi ulasan) akan otomatis diperbarui rating, respon, dan teks ulasannya.
+                                </p>
+                            </div>
+                        </div>
+
+                        <DialogFooter className="flex justify-end gap-2 pt-3">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsImportOpen(false)}
+                                disabled={importForm.processing}
+                            >
+                                Batal
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={
+                                    !importForm.data.file ||
+                                    importForm.processing
+                                }
+                                className="gap-2"
+                            >
+                                {importForm.processing ? (
+                                    <>
+                                        <Loader2 className="size-4 animate-spin" />
+                                        Mengimpor...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Upload className="size-4" />
+                                        Mulai Import
+                                    </>
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
         </>
