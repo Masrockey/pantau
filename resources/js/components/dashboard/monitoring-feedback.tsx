@@ -6,10 +6,13 @@ import {
     ArrowUpDown,
     BarChart3,
     Calendar,
+    Check,
     CheckCircle2,
+    ChevronDown,
     Download,
     Search,
     Table as TableIcon,
+    X,
     XCircle,
 } from 'lucide-react';
 import React from 'react';
@@ -60,6 +63,11 @@ interface MonitoringFeedbackProps {
     availableMonths: string[];
     activeMonth: string | null;
     prevMonth: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    prevStartDate?: string | null;
+    prevEndDate?: string | null;
+    activeRangeLabel?: string | null;
     selectedDealerId?: string;
 }
 
@@ -67,6 +75,7 @@ type SortKey = keyof MonitoringFeedbackItem;
 
 function formatMonthLabel(ym: string | null): string {
     if (!ym) return '';
+    if (ym === 'all' || ym.toLowerCase() === 'all') return 'All Tanggal';
     const parts = ym.split('-');
     if (parts.length !== 2) return ym;
     const [year, month] = parts;
@@ -76,6 +85,19 @@ function formatMonthLabel(ym: string | null): string {
     ];
     const monthIdx = parseInt(month, 10) - 1;
     return `${monthNames[monthIdx] ?? month} ${year}`;
+}
+
+function formatDateShort(dateStr?: string | null): string {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const [y, m, d] = parts;
+    const monthNames = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+        'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+    ];
+    const mIdx = parseInt(m, 10) - 1;
+    return `${parseInt(d, 10)} ${monthNames[mIdx] ?? m} ${y}`;
 }
 
 function GmbScoreBadge({ score }: { score: number | null }) {
@@ -181,6 +203,11 @@ export function MonitoringFeedback({
     availableMonths = [],
     activeMonth,
     prevMonth,
+    startDate,
+    endDate,
+    prevStartDate,
+    prevEndDate,
+    activeRangeLabel,
     selectedDealerId = '',
 }: MonitoringFeedbackProps) {
     const [search, setSearch] = React.useState('');
@@ -190,20 +217,115 @@ export function MonitoringFeedback({
     const [pageSize, setPageSize] = React.useState<number | 'all'>('all');
     const [currentPage, setCurrentPage] = React.useState(1);
 
-    const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const nextMonth = e.target.value;
+    // Date range popover state
+    const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
+    const datePickerRef = React.useRef<HTMLDivElement>(null);
+    const [customStart, setCustomStart] = React.useState(startDate || '');
+    const [customEnd, setCustomEnd] = React.useState(endDate || '');
+
+    React.useEffect(() => {
+        if (startDate) setCustomStart(startDate);
+        if (endDate) setCustomEnd(endDate);
+    }, [startDate, endDate]);
+
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
+                setIsDatePickerOpen(false);
+            }
+        };
+        if (isDatePickerOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isDatePickerOpen]);
+
+    const formatDateToYMD = (d: Date): string => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const applyDateFilter = (params: {
+        start_date?: string | null;
+        end_date?: string | null;
+        month?: string | null;
+    }) => {
         const currentParams = new URLSearchParams(window.location.search);
-        if (nextMonth) {
-            currentParams.set('month', nextMonth);
+
+        if (params.month) {
+            currentParams.set('month', params.month);
+            currentParams.delete('start_date');
+            currentParams.delete('end_date');
+        } else if (params.start_date && params.end_date) {
+            currentParams.set('start_date', params.start_date);
+            currentParams.set('end_date', params.end_date);
+            currentParams.delete('month');
         } else {
+            currentParams.delete('start_date');
+            currentParams.delete('end_date');
             currentParams.delete('month');
         }
+
+        setIsDatePickerOpen(false);
         router.get(
-            dashboard(),
+            window.location.pathname,
             Object.fromEntries(currentParams.entries()),
             { preserveState: true, preserveScroll: true }
         );
     };
+
+    const handleSelectAll = () => {
+        applyDateFilter({ month: 'all' });
+    };
+
+    const handleSelectPreset = (preset: 'today' | '7days' | '30days' | 'thisMonth' | 'lastMonth') => {
+        const now = new Date();
+        if (preset === 'today') {
+            const todayStr = formatDateToYMD(now);
+            applyDateFilter({ start_date: todayStr, end_date: todayStr });
+        } else if (preset === '7days') {
+            const d = new Date();
+            d.setDate(d.getDate() - 6);
+            applyDateFilter({ start_date: formatDateToYMD(d), end_date: formatDateToYMD(now) });
+        } else if (preset === '30days') {
+            const d = new Date();
+            d.setDate(d.getDate() - 29);
+            applyDateFilter({ start_date: formatDateToYMD(d), end_date: formatDateToYMD(now) });
+        } else if (preset === 'thisMonth') {
+            const start = new Date(now.getFullYear(), now.getMonth(), 1);
+            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            applyDateFilter({ start_date: formatDateToYMD(start), end_date: formatDateToYMD(end) });
+        } else if (preset === 'lastMonth') {
+            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), 0);
+            applyDateFilter({ start_date: formatDateToYMD(start), end_date: formatDateToYMD(end) });
+        }
+    };
+
+    const handleSelectMonth = (m: string) => {
+        applyDateFilter({ month: m });
+    };
+
+    const handleApplyCustomRange = () => {
+        if (!customStart || !customEnd) return;
+        applyDateFilter({ start_date: customStart, end_date: customEnd });
+    };
+
+    const displayDateLabel = React.useMemo(() => {
+        if (activeRangeLabel) return activeRangeLabel;
+        if (startDate && endDate) {
+            return startDate === endDate
+                ? formatDateShort(startDate)
+                : `${formatDateShort(startDate)} - ${formatDateShort(endDate)}`;
+        }
+        if (activeMonth === 'all') return 'All Tanggal';
+        if (activeMonth) return formatMonthLabel(activeMonth);
+        return 'Pilih Rentang Tanggal';
+    }, [activeRangeLabel, startDate, endDate, activeMonth]);
 
     const handleSort = (key: SortKey) => {
         if (sortKey === key) {
@@ -272,8 +394,16 @@ export function MonitoringFeedback({
             'NOT YET FEEDBACK',
             '%ACH FEEDBACK',
             'LT (DAY)',
-            `JUMLAH REVIEW (M: ${activeMonth ?? ''})`,
-            `JUMLAH REVIEW (M-1: ${prevMonth ?? ''})`,
+            activeMonth === 'all'
+                ? 'JUMLAH REVIEW (ALL)'
+                : startDate && endDate
+                ? `JUMLAH REVIEW (${startDate} s/d ${endDate})`
+                : `JUMLAH REVIEW (M: ${activeMonth ?? ''})`,
+            activeMonth === 'all'
+                ? 'JUMLAH REVIEW (M-1)'
+                : prevStartDate && prevEndDate
+                ? `JUMLAH REVIEW (M-1: ${prevStartDate} s/d ${prevEndDate})`
+                : `JUMLAH REVIEW (M-1: ${prevMonth ?? ''})`,
             'GROWTH REVIEW',
         ];
 
@@ -318,7 +448,10 @@ export function MonitoringFeedback({
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `Monitoring_Feedback_${activeMonth || 'all'}.csv`;
+        const filenameRange = startDate && endDate
+            ? `${startDate}_sd_${endDate}`
+            : (activeMonth || 'all');
+        a.download = `Monitoring_Feedback_${filenameRange}.csv`;
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -347,35 +480,194 @@ export function MonitoringFeedback({
                         </Badge>
                     </div>
                     <CardDescription className="text-xs mt-0.5">
-                        Komparasi performa respons, rating ulasan, dan tren pertumbuhan ulasan bulan berjalan{' '}
-                        <span className="font-semibold text-foreground">
-                            (M: {formatMonthLabel(activeMonth)})
-                        </span>{' '}
-                        terhadap bulan sebelumnya{' '}
-                        <span className="font-semibold text-foreground">
-                            (M-1: {formatMonthLabel(prevMonth)})
-                        </span>
+                        Komparasi performa respons, rating ulasan, dan tren pertumbuhan ulasan{' '}
+                        {activeMonth === 'all' ? (
+                            <span className="font-semibold text-foreground">
+                                (All Tanggal)
+                            </span>
+                        ) : (
+                            <>
+                                periode{' '}
+                                <span className="font-semibold text-foreground">
+                                    ({displayDateLabel})
+                                </span>{' '}
+                                {prevStartDate && prevEndDate ? (
+                                    <>
+                                        terhadap periode sebelumnya{' '}
+                                        <span className="font-semibold text-foreground">
+                                            ({formatDateShort(prevStartDate)} - {formatDateShort(prevEndDate)})
+                                        </span>
+                                    </>
+                                ) : prevMonth ? (
+                                    <>
+                                        terhadap bulan sebelumnya{' '}
+                                        <span className="font-semibold text-foreground">
+                                            (M-1: {formatMonthLabel(prevMonth)})
+                                        </span>
+                                    </>
+                                ) : null}
+                            </>
+                        )}
                     </CardDescription>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    {/* Month Picker */}
-                    {availableMonths.length > 0 && (
-                        <div className="flex items-center gap-1.5 text-xs bg-background rounded-md border px-2 py-1 shadow-2xs">
-                            <Calendar className="size-3.5 text-muted-foreground" />
-                            <select
-                                value={activeMonth ?? ''}
-                                onChange={handleMonthChange}
-                                className="bg-transparent text-xs font-medium focus:outline-none cursor-pointer"
-                            >
-                                {availableMonths.map((m) => (
-                                    <option key={m} value={m} className="bg-background text-foreground">
-                                        {formatMonthLabel(m)}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
+                    {/* Date Range Picker Popover */}
+                    <div className="relative" ref={datePickerRef}>
+                        <button
+                            type="button"
+                            onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
+                            className="flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-input bg-background hover:bg-muted/40 text-xs font-medium shadow-2xs transition-colors cursor-pointer"
+                            title="Pilih rentang tanggal atau bulan"
+                        >
+                            <Calendar className="size-3.5 text-primary" />
+                            <span className="truncate max-w-[170px] sm:max-w-[240px] text-foreground font-semibold">
+                                {displayDateLabel}
+                            </span>
+                            <ChevronDown
+                                className={`size-3 text-muted-foreground transition-transform duration-200 ${
+                                    isDatePickerOpen ? 'rotate-180' : ''
+                                }`}
+                            />
+                        </button>
+
+                        {isDatePickerOpen && (
+                            <div className="absolute right-0 top-full mt-1.5 z-50 w-[320px] sm:w-[380px] rounded-xl border border-border bg-popover text-popover-foreground shadow-xl p-3.5 space-y-3">
+                                {/* Header */}
+                                <div className="flex items-center justify-between pb-2 border-b">
+                                    <div className="flex items-center gap-1.5">
+                                        <Calendar className="size-4 text-primary" />
+                                        <span className="font-bold text-xs">Pilih Rentang Tanggal</span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsDatePickerOpen(false)}
+                                        className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                                    >
+                                        <X className="size-3.5" />
+                                    </button>
+                                </div>
+
+                                {/* Quick Presets */}
+                                <div className="space-y-1.5">
+                                    <span className="text-[11px] font-semibold text-muted-foreground">Pilihan Cepat:</span>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                                        <Button
+                                            type="button"
+                                            variant={activeMonth === 'all' ? 'default' : 'outline'}
+                                            size="sm"
+                                            onClick={handleSelectAll}
+                                            className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                        >
+                                            Semua Tanggal
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleSelectPreset('today')}
+                                            className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                        >
+                                            Hari Ini
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleSelectPreset('7days')}
+                                            className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                        >
+                                            7 Hari Terakhir
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleSelectPreset('30days')}
+                                            className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                        >
+                                            30 Hari Terakhir
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleSelectPreset('thisMonth')}
+                                            className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                        >
+                                            Bulan Ini
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleSelectPreset('lastMonth')}
+                                            className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                        >
+                                            Bulan Lalu
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Custom Date Range */}
+                                <div className="space-y-2 pt-2 border-t">
+                                    <span className="text-[11px] font-semibold text-muted-foreground">Kustom Rentang Tanggal:</span>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-muted-foreground font-medium">Dari Tanggal</label>
+                                            <input
+                                                type="date"
+                                                value={customStart}
+                                                onChange={(e) => setCustomStart(e.target.value)}
+                                                className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] text-muted-foreground font-medium">Sampai Tanggal</label>
+                                            <input
+                                                type="date"
+                                                value={customEnd}
+                                                onChange={(e) => setCustomEnd(e.target.value)}
+                                                className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                            />
+                                        </div>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        onClick={handleApplyCustomRange}
+                                        disabled={!customStart || !customEnd}
+                                        className="w-full h-8 text-xs font-semibold cursor-pointer"
+                                    >
+                                        Terapkan Rentang Tanggal
+                                    </Button>
+                                </div>
+
+                                {/* Specific Month */}
+                                {availableMonths.length > 0 && (
+                                    <div className="space-y-1 pt-2 border-t">
+                                        <span className="text-[11px] font-semibold text-muted-foreground">Pilih Bulan Spesifik:</span>
+                                        <select
+                                            value={!startDate && !endDate && activeMonth && activeMonth !== 'all' ? activeMonth : ''}
+                                            onChange={(e) => {
+                                                if (e.target.value) {
+                                                    handleSelectMonth(e.target.value);
+                                                }
+                                            }}
+                                            className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        >
+                                            <option value="" disabled>-- Pilih Bulan --</option>
+                                            {availableMonths.map((m) => (
+                                                <option key={m} value={m}>
+                                                    {formatMonthLabel(m)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
 
                     {/* Search */}
                     <div className="relative">
@@ -494,7 +786,7 @@ export function MonitoringFeedback({
                                         onClick={() => handleSort('jumlah_review_m')}
                                         className="bg-slate-900 px-3 py-2.5 text-center cursor-pointer hover:bg-slate-800 transition-colors border-r border-slate-700/60"
                                     >
-                                        JUMLAH REVIEW (M) {renderSortArrow('jumlah_review_m')}
+                                        {activeMonth === 'all' ? 'JUMLAH REVIEW (ALL)' : 'JUMLAH REVIEW (M)'} {renderSortArrow('jumlah_review_m')}
                                     </th>
                                     <th
                                         onClick={() => handleSort('jumlah_review_m1')}

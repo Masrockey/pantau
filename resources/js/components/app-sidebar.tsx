@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Building2, Calculator, LayoutGrid, RefreshCw, Star, Users } from 'lucide-react';
+import { Activity, BarChart3, Building2, Calculator, Compass, LayoutGrid, RefreshCw, Star, Users } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -14,7 +14,10 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import dealerOverviewRoute from '@/routes/dealer-overview';
 import dealers from '@/routes/dealers';
+import gmbClusterRoute from '@/routes/gmb-cluster';
+import monitoringFeedbackRoute from '@/routes/monitoring-feedback';
 import ratingSimulasi from '@/routes/rating-simulasi';
 import reviews from '@/routes/reviews';
 import syncRoute from '@/routes/reviews/sync';
@@ -26,6 +29,21 @@ const gbpNavItems: NavItem[] = [
         title: 'Dashboard GBP',
         href: dashboard(),
         icon: LayoutGrid,
+    },
+    {
+        title: 'Monitoring Feedback',
+        href: monitoringFeedbackRoute.index(),
+        icon: Activity,
+    },
+    {
+        title: 'Dealer Overview',
+        href: dealerOverviewRoute.index(),
+        icon: BarChart3,
+    },
+    {
+        title: 'GMB Cluster',
+        href: gmbClusterRoute.index(),
+        icon: Compass,
     },
     {
         title: 'Review',

@@ -2,14 +2,18 @@ import { Head, Link, router } from '@inertiajs/react';
 import {
     AlertCircle,
     ArrowLeft,
+    Calendar,
     CheckCircle2,
     Clock,
     Copy,
     ExternalLink,
     HelpCircle,
     Info,
+    Layers,
     Loader2,
+    Pencil,
     Play,
+    Plus,
     RefreshCw,
     RotateCcw,
     Search,
@@ -26,12 +30,42 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { dashboard } from '@/routes';
 import dealersRoute from '@/routes/dealers';
 import reviewsRoute from '@/routes/reviews';
 import syncRoute from '@/routes/reviews/sync';
+import schedulesRoute from '@/routes/reviews/sync/schedules';
+
+export interface ScrapingScheduleItem {
+    id: number;
+    dealer_id: number | null;
+    max_reviews: number;
+    sort_by: 'newest' | 'highest' | 'lowest' | 'relevant';
+    interval_value: number;
+    interval_unit: 'minute' | 'hour' | 'day' | 'week';
+    formatted_interval?: string;
+    use_proxy: boolean;
+    is_active: boolean;
+    last_run_at: string | null;
+    next_run_at: string | null;
+    last_status: string;
+    last_message: string | null;
+    dealer?: {
+        id: number;
+        kode_dealer: string;
+        nama_dealer: string;
+    } | null;
+}
 
 interface SyncDealer {
     id: number;
@@ -77,6 +111,7 @@ interface SyncServerStatus {
 interface SyncPageProps {
     dealers: SyncDealer[];
     stats: SyncStats;
+    schedules?: ScrapingScheduleItem[];
     serverStatus?: SyncServerStatus;
     serverLogs?: LogEntry[];
     canManageAll?: boolean;
@@ -95,6 +130,7 @@ const selectClass =
 export default function SyncReviewsPage({
     dealers,
     stats,
+    schedules = [],
     serverStatus,
     serverLogs = [],
     canManageAll = true,
@@ -107,6 +143,242 @@ export default function SyncReviewsPage({
         deadCount?: number;
     } | null>(null);
     const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+
+    // Schedule list & modal states
+    const [scheduleList, setScheduleList] = useState<ScrapingScheduleItem[]>(schedules);
+    useEffect(() => {
+        setScheduleList(schedules);
+    }, [schedules]);
+
+    const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+    const [editingSchedule, setEditingSchedule] = useState<ScrapingScheduleItem | null>(null);
+    const [scheduleForm, setScheduleForm] = useState<{
+        dealer_id: string;
+        max_reviews: number;
+        sort_by: 'newest' | 'highest' | 'lowest' | 'relevant';
+        interval_value: number;
+        interval_unit: 'minute' | 'hour' | 'day' | 'week';
+        use_proxy: boolean;
+        is_active: boolean;
+    }>({
+        dealer_id: 'all',
+        max_reviews: 50,
+        sort_by: 'newest',
+        interval_value: 30,
+        interval_unit: 'minute',
+        use_proxy: true,
+        is_active: true,
+    });
+    const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
+    const [runningScheduleId, setRunningScheduleId] = useState<number | null>(null);
+    const [togglingScheduleId, setTogglingScheduleId] = useState<number | null>(null);
+    const [deletingScheduleId, setDeletingScheduleId] = useState<number | null>(null);
+
+    const intervalError = React.useMemo(() => {
+        const val = Number(scheduleForm.interval_value);
+        if (isNaN(val) || val <= 0) {
+            return 'Waktu update harus berupa angka positif.';
+        }
+        if (scheduleForm.interval_unit === 'minute' && val < 5) {
+            return 'Waktu update minimal adalah 5 menit (tidak boleh di bawah 5 menit).';
+        }
+        return null;
+    }, [scheduleForm.interval_value, scheduleForm.interval_unit]);
+
+    const handleOpenAddModal = () => {
+        setEditingSchedule(null);
+        setScheduleForm({
+            dealer_id: 'all',
+            max_reviews: 50,
+            sort_by: 'newest',
+            interval_value: 30,
+            interval_unit: 'minute',
+            use_proxy: true,
+            is_active: true,
+        });
+        setIsScheduleModalOpen(true);
+    };
+
+    const handleOpenEditModal = (sched: ScrapingScheduleItem) => {
+        setEditingSchedule(sched);
+        setScheduleForm({
+            dealer_id: sched.dealer_id ? String(sched.dealer_id) : 'all',
+            max_reviews: sched.max_reviews,
+            sort_by: sched.sort_by,
+            interval_value: sched.interval_value,
+            interval_unit: sched.interval_unit,
+            use_proxy: sched.use_proxy,
+            is_active: sched.is_active,
+        });
+        setIsScheduleModalOpen(true);
+    };
+
+    const handleSaveSchedule = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (intervalError) {
+            toast.error(intervalError);
+            return;
+        }
+
+        setIsSubmittingSchedule(true);
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+        const isEditing = Boolean(editingSchedule);
+        const url = isEditing && editingSchedule
+            ? schedulesRoute.update.url({ schedule: editingSchedule.id })
+            : schedulesRoute.store.url();
+        const method = isEditing ? 'PUT' : 'POST';
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    dealer_id: scheduleForm.dealer_id === 'all' ? null : scheduleForm.dealer_id,
+                    max_reviews: Number(scheduleForm.max_reviews),
+                    sort_by: scheduleForm.sort_by,
+                    interval_value: Number(scheduleForm.interval_value),
+                    interval_unit: scheduleForm.interval_unit,
+                    use_proxy: scheduleForm.use_proxy,
+                    is_active: scheduleForm.is_active,
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                const errMsg = data.message || 'Gagal menyimpan jadwal scraping.';
+                toast.error(errMsg);
+                return;
+            }
+
+            toast.success(data.message || (isEditing ? 'Jadwal berhasil diperbarui.' : 'Jadwal berhasil dibuat.'));
+            setIsScheduleModalOpen(false);
+            router.reload({ only: ['schedules'] });
+        } catch (err: unknown) {
+            const errStr = err instanceof Error ? err.message : 'Terjadi kendala koneksi ke server.';
+            toast.error(errStr);
+        } finally {
+            setIsSubmittingSchedule(false);
+        }
+    };
+
+    const handleToggleSchedule = async (sched: ScrapingScheduleItem) => {
+        setTogglingScheduleId(sched.id);
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+
+        try {
+            const res = await fetch(schedulesRoute.toggle.url({ schedule: sched.id }), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                toast.error(data.message || 'Gagal mengubah status jadwal.');
+                return;
+            }
+
+            toast.success(data.message || 'Status jadwal berhasil diubah.');
+            router.reload({ only: ['schedules'] });
+        } catch {
+            toast.error('Gagal menghubungi server untuk mengubah status jadwal.');
+        } finally {
+            setTogglingScheduleId(null);
+        }
+    };
+
+    const handleRunSchedule = async (sched: ScrapingScheduleItem) => {
+        if (scraperOnline === false) {
+            toast.error('Scraper service tidak aktif di port 3000.');
+            return;
+        }
+
+        setRunningScheduleId(sched.id);
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+
+        try {
+            const res = await fetch(schedulesRoute.run.url({ schedule: sched.id }), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                toast.error(data.message || 'Gagal meluncurkan auto scrap.');
+                return;
+            }
+
+            toast.success(data.message || 'Auto scrap berhasil diluncurkan di server.');
+            startPolling();
+            router.reload({ only: ['schedules', 'serverStatus'] });
+        } catch {
+            toast.error('Gagal menghubungi server untuk menjalankan auto scrap.');
+        } finally {
+            setRunningScheduleId(null);
+        }
+    };
+
+    const handleDeleteSchedule = async (sched: ScrapingScheduleItem) => {
+        const targetLabel = sched.dealer ? sched.dealer.nama_dealer : 'Semua Showroom';
+        if (!window.confirm(`Hapus jadwal auto scrap untuk "${targetLabel}"?`)) {
+            return;
+        }
+
+        setDeletingScheduleId(sched.id);
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+
+        try {
+            const res = await fetch(schedulesRoute.destroy.url({ schedule: sched.id }), {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                toast.error(data.message || 'Gagal menghapus jadwal.');
+                return;
+            }
+
+            toast.success(data.message || 'Jadwal berhasil dihapus.');
+            router.reload({ only: ['schedules'] });
+        } catch {
+            toast.error('Gagal menghubungi server untuk menghapus jadwal.');
+        } finally {
+            setDeletingScheduleId(null);
+        }
+    };
+
+    const formatDateTime = (dateStr?: string | null) => {
+        if (!dateStr) return '-';
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
+            return d.toLocaleString('id-ID', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch {
+            return dateStr;
+        }
+    };
 
     // Form settings
     const defaultDealer = canManageAll
@@ -994,6 +1266,440 @@ export default function SyncReviewsPage({
                         </Card>
                     </div>
                 </div>
+
+                {/* Jadwal Scraping Otomatis (Auto Scrap) */}
+                <Card className="border shadow-sm">
+                    <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 bg-muted/10 border-b">
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <Clock className="size-4 text-primary" />
+                                <CardTitle className="text-base font-bold">Jadwal Scraping Otomatis (Auto Scrap)</CardTitle>
+                                <Badge variant="secondary" className="font-semibold text-xs">
+                                    {scheduleList.length} Jadwal
+                                </Badge>
+                            </div>
+                            <CardDescription className="text-xs mt-0.5">
+                                Konfigurasi jadwal otomatis untuk memperbarui ulasan Google Maps di background server secara berkala.
+                            </CardDescription>
+                        </div>
+                        {canManageAll && (
+                            <Button
+                                type="button"
+                                size="sm"
+                                onClick={handleOpenAddModal}
+                                className="h-8 gap-1.5 text-xs font-semibold cursor-pointer"
+                            >
+                                <Plus className="size-3.5" />
+                                <span>Tambah Jadwal</span>
+                            </Button>
+                        )}
+                    </CardHeader>
+
+                    <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs whitespace-nowrap">
+                                <thead className="border-b bg-muted/40 font-medium text-muted-foreground">
+                                    <tr>
+                                        <th className="px-4 py-3">Target Showroom</th>
+                                        <th className="px-4 py-3 text-center">Maks. Ulasan</th>
+                                        <th className="px-4 py-3 text-center">Urutan</th>
+                                        <th className="px-4 py-3">Frekuensi Update</th>
+                                        <th className="px-4 py-3 text-center">Status</th>
+                                        <th className="px-4 py-3">Terakhir Dijalankan</th>
+                                        <th className="px-4 py-3">Jadwal Berikutnya</th>
+                                        {canManageAll && <th className="px-4 py-3 text-right">Aksi</th>}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/60">
+                                    {scheduleList.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={canManageAll ? 8 : 7} className="py-8 text-center text-muted-foreground text-xs">
+                                                <Clock className="size-8 mx-auto mb-2 opacity-30 text-muted-foreground" />
+                                                <p className="font-medium">Belum ada jadwal scraping otomatis.</p>
+                                                <p className="text-[11px] mt-0.5 text-muted-foreground">
+                                                    Klik tombol &quot;Tambah Jadwal&quot; di atas untuk membuat jadwal auto scrap berkala.
+                                                </p>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        scheduleList.map((sched) => (
+                                            <tr key={sched.id} className="hover:bg-muted/30 transition-colors">
+                                                {/* Target Showroom */}
+                                                <td className="px-4 py-3">
+                                                    {sched.dealer_id && sched.dealer ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="font-semibold text-foreground">{sched.dealer.nama_dealer}</span>
+                                                            <Badge variant="outline" className="text-[10px] font-mono">
+                                                                {sched.dealer.kode_dealer}
+                                                            </Badge>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="inline-flex items-center gap-1.5 font-semibold text-sky-600 dark:text-sky-400">
+                                                            <Layers className="size-3.5" />
+                                                            <span>Semua Showroom ({dealers.length} Showroom)</span>
+                                                        </div>
+                                                    )}
+                                                </td>
+
+                                                {/* Maks Ulasan */}
+                                                <td className="px-4 py-3 text-center font-mono font-medium">
+                                                    {sched.max_reviews} ulasan
+                                                </td>
+
+                                                {/* Urutan */}
+                                                <td className="px-4 py-3 text-center">
+                                                    <Badge variant="outline" className="text-[11px] font-medium">
+                                                        {sched.sort_by === 'newest'
+                                                            ? 'Terkini'
+                                                            : sched.sort_by === 'highest'
+                                                            ? 'Rating Tertinggi'
+                                                            : sched.sort_by === 'lowest'
+                                                            ? 'Rating Terendah'
+                                                            : 'Paling Relevan'}
+                                                    </Badge>
+                                                </td>
+
+                                                {/* Frekuensi Update */}
+                                                <td className="px-4 py-3 font-medium">
+                                                    <div className="inline-flex items-center gap-1.5 text-foreground">
+                                                        <Clock className="size-3.5 text-muted-foreground" />
+                                                        <span>
+                                                            {sched.formatted_interval || `Setiap ${sched.interval_value} ${sched.interval_unit}`}
+                                                        </span>
+                                                    </div>
+                                                </td>
+
+                                                {/* Status Aktif / Nonaktif */}
+                                                <td className="px-4 py-3 text-center">
+                                                    {canManageAll ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleToggleSchedule(sched)}
+                                                            disabled={togglingScheduleId === sched.id}
+                                                            className="cursor-pointer transition-opacity hover:opacity-80 inline-flex items-center"
+                                                            title="Klik untuk mengubah status aktif/nonaktif"
+                                                        >
+                                                            {sched.is_active ? (
+                                                                <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px]">
+                                                                    <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
+                                                                    Aktif
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge variant="secondary" className="text-muted-foreground gap-1 text-[11px]">
+                                                                    <span className="size-1.5 rounded-full bg-slate-400 inline-block" />
+                                                                    Nonaktif
+                                                                </Badge>
+                                                            )}
+                                                        </button>
+                                                    ) : (
+                                                        sched.is_active ? (
+                                                            <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px]">
+                                                                <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
+                                                                Aktif
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="secondary" className="text-muted-foreground gap-1 text-[11px]">
+                                                                <span className="size-1.5 rounded-full bg-slate-400 inline-block" />
+                                                                Nonaktif
+                                                            </Badge>
+                                                        )
+                                                    )}
+                                                </td>
+
+                                                {/* Terakhir Dijalankan */}
+                                                <td className="px-4 py-3 text-muted-foreground">
+                                                    {sched.last_run_at ? (
+                                                        <div>
+                                                            <p className="text-foreground font-medium">{formatDateTime(sched.last_run_at)}</p>
+                                                            {sched.last_status && sched.last_status !== 'idle' && (
+                                                                <p className={`text-[10px] ${
+                                                                    sched.last_status === 'running'
+                                                                        ? 'text-amber-500'
+                                                                        : sched.last_status === 'failed'
+                                                                        ? 'text-rose-500'
+                                                                        : 'text-emerald-500'
+                                                                }`}>
+                                                                    {sched.last_status === 'running'
+                                                                        ? 'Sedang Berjalan'
+                                                                        : sched.last_status === 'failed'
+                                                                        ? 'Gagal'
+                                                                        : 'Selesai'}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-muted-foreground">-</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Jadwal Berikutnya */}
+                                                <td className="px-4 py-3">
+                                                    {sched.is_active && sched.next_run_at ? (
+                                                        <div className="flex items-center gap-1.5 text-foreground font-medium">
+                                                            <Calendar className="size-3.5 text-primary" />
+                                                            <span>{formatDateTime(sched.next_run_at)}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-muted-foreground italic">Dinonaktifkan</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Aksi */}
+                                                {canManageAll && (
+                                                    <td className="px-4 py-3 text-right">
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => handleRunSchedule(sched)}
+                                                                disabled={runningScheduleId === sched.id || isRunning}
+                                                                className="h-7 px-2 text-xs gap-1 cursor-pointer text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                                                title="Jalankan scraping sekarang"
+                                                            >
+                                                                {runningScheduleId === sched.id ? (
+                                                                    <Loader2 className="size-3 animate-spin" />
+                                                                ) : (
+                                                                    <Play className="size-3 fill-emerald-600" />
+                                                                )}
+                                                                <span>Jalankan</span>
+                                                            </Button>
+
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleOpenEditModal(sched)}
+                                                                className="h-7 w-7 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                                                                title="Edit jadwal"
+                                                            >
+                                                                <Pencil className="size-3.5" />
+                                                            </Button>
+
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleDeleteSchedule(sched)}
+                                                                disabled={deletingScheduleId === sched.id}
+                                                                className="h-7 w-7 p-0 cursor-pointer text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                                                title="Hapus jadwal"
+                                                            >
+                                                                {deletingScheduleId === sched.id ? (
+                                                                    <Loader2 className="size-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <Trash2 className="size-3.5" />
+                                                                )}
+                                                            </Button>
+                                                        </div>
+                                                    </td>
+                                                )}
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Modal Dialog Tambah / Edit Jadwal */}
+                <Dialog open={isScheduleModalOpen} onOpenChange={setIsScheduleModalOpen}>
+                    <DialogContent className="sm:max-w-[500px]">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <Clock className="size-5 text-primary" />
+                                {editingSchedule ? 'Edit Jadwal Auto Scrap' : 'Tambah Jadwal Auto Scrap'}
+                            </DialogTitle>
+                            <DialogDescription>
+                                Tentukan target showroom, kuota ulasan, urutan ulasan, dan frekuensi auto-update.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <form onSubmit={handleSaveSchedule} className="space-y-4 pt-1">
+                            {/* Target Showroom */}
+                            <div className="space-y-1.5">
+                                <Label htmlFor="sched-dealer" className="text-xs font-semibold">
+                                    Target Showroom
+                                </Label>
+                                <select
+                                    id="sched-dealer"
+                                    value={scheduleForm.dealer_id}
+                                    onChange={(e) => setScheduleForm({ ...scheduleForm, dealer_id: e.target.value })}
+                                    className={selectClass}
+                                >
+                                    <option value="all">Semua Showroom ({dealers.length} Showroom)</option>
+                                    {dealers.map((d) => (
+                                        <option key={d.id} value={String(d.id)} disabled={!d.link_google_maps}>
+                                            {d.kode_dealer} - {d.nama_dealer} {!d.link_google_maps ? '(Belum ada link Maps)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-[11px] text-muted-foreground">
+                                    Pilih &quot;Semua Showroom&quot; untuk scrap otomatis berurutan ke seluruh showroom yang terdaftar.
+                                </p>
+                            </div>
+
+                            {/* Jumlah Ulasan Maksimal & Urutan Ulasan */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="sched-max" className="text-xs font-semibold">
+                                        Jumlah Ulasan Maksimal
+                                    </Label>
+                                    <Input
+                                        id="sched-max"
+                                        type="number"
+                                        min={1}
+                                        max={5000}
+                                        value={scheduleForm.max_reviews}
+                                        onChange={(e) => setScheduleForm({ ...scheduleForm, max_reviews: Number(e.target.value) || 1 })}
+                                        className="h-9 text-xs"
+                                        placeholder="50"
+                                    />
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Batas maksimal ulasan per showroom
+                                    </p>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="sched-sort" className="text-xs font-semibold">
+                                        Urutan Ulasan
+                                    </Label>
+                                    <select
+                                        id="sched-sort"
+                                        value={scheduleForm.sort_by}
+                                        onChange={(e) => setScheduleForm({ ...scheduleForm, sort_by: e.target.value as any })}
+                                        className={selectClass}
+                                    >
+                                        <option value="newest">Terkini (Newest)</option>
+                                        <option value="highest">Rating Tertinggi</option>
+                                        <option value="lowest">Rating Terendah</option>
+                                        <option value="relevant">Paling Relevan</option>
+                                    </select>
+                                    <p className="text-[11px] text-muted-foreground">
+                                        Prioritas urutan ulasan Google Maps
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Waktu Update / Interval */}
+                            <div className="space-y-1.5 rounded-lg border p-3 bg-muted/20">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs font-semibold">
+                                        Waktu Update (Frekuensi)
+                                    </Label>
+                                    <Badge variant="outline" className="text-[10px] text-muted-foreground font-normal">
+                                        Minimal 5 Menit
+                                    </Badge>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                    <div>
+                                        <Input
+                                            type="number"
+                                            min={scheduleForm.interval_unit === 'minute' ? 5 : 1}
+                                            value={scheduleForm.interval_value}
+                                            onChange={(e) => {
+                                                const val = Number(e.target.value);
+                                                setScheduleForm({ ...scheduleForm, interval_value: val });
+                                            }}
+                                            className="h-9 text-xs font-medium"
+                                            placeholder="Contoh: 30"
+                                        />
+                                    </div>
+                                    <div>
+                                        <select
+                                            value={scheduleForm.interval_unit}
+                                            onChange={(e) => {
+                                                const unit = e.target.value as any;
+                                                setScheduleForm({
+                                                    ...scheduleForm,
+                                                    interval_unit: unit,
+                                                    interval_value:
+                                                        unit === 'minute' && scheduleForm.interval_value < 5
+                                                            ? 5
+                                                            : scheduleForm.interval_value,
+                                                });
+                                            }}
+                                            className={selectClass}
+                                        >
+                                            <option value="minute">Menit</option>
+                                            <option value="hour">Jam</option>
+                                            <option value="day">Hari</option>
+                                            <option value="week">Minggu</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {intervalError ? (
+                                    <div className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 mt-1.5 font-medium">
+                                        <AlertCircle className="size-3.5 shrink-0" />
+                                        <span>{intervalError}</span>
+                                    </div>
+                                ) : (
+                                    <p className="text-[11px] text-muted-foreground mt-1">
+                                        Sistem akan menjalankan auto scrap otomatis setiap{' '}
+                                        <strong className="text-foreground">
+                                            {scheduleForm.interval_value}{' '}
+                                            {scheduleForm.interval_unit === 'minute'
+                                                ? 'Menit'
+                                                : scheduleForm.interval_unit === 'hour'
+                                                ? 'Jam'
+                                                : scheduleForm.interval_unit === 'day'
+                                                ? 'Hari'
+                                                : 'Minggu'}
+                                        </strong>
+                                        .
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Checkbox Options */}
+                            <div className="flex flex-col gap-2 pt-1">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        id="sched-proxy"
+                                        checked={scheduleForm.use_proxy}
+                                        onCheckedChange={(checked) => setScheduleForm({ ...scheduleForm, use_proxy: Boolean(checked) })}
+                                    />
+                                    <Label htmlFor="sched-proxy" className="text-xs font-normal cursor-pointer">
+                                        Gunakan Proxy Rotasi (Direkomendasikan)
+                                    </Label>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        id="sched-active"
+                                        checked={scheduleForm.is_active}
+                                        onCheckedChange={(checked) => setScheduleForm({ ...scheduleForm, is_active: Boolean(checked) })}
+                                    />
+                                    <Label htmlFor="sched-active" className="text-xs font-normal cursor-pointer">
+                                        Jadwal langsung diaktifkan
+                                    </Label>
+                                </div>
+                            </div>
+
+                            <DialogFooter className="pt-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setIsScheduleModalOpen(false)}
+                                    disabled={isSubmittingSchedule}
+                                >
+                                    Batal
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    size="sm"
+                                    disabled={isSubmittingSchedule || Boolean(intervalError)}
+                                    className="gap-1.5"
+                                >
+                                    {isSubmittingSchedule && <Loader2 className="size-3.5 animate-spin" />}
+                                    {editingSchedule ? 'Perbarui Jadwal' : 'Simpan Jadwal'}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Showroom Quick Table */}
                 <Card>

@@ -7,6 +7,7 @@ use App\Http\Requests\StoreReviewRequest;
 use App\Http\Requests\UpdateReviewRequest;
 use App\Models\Dealer;
 use App\Models\Review;
+use App\Models\ScrapingSchedule;
 use App\Services\GoogleReviewScraperService;
 use App\Services\ReviewExcelService;
 use App\Services\SyncReviewServerService;
@@ -220,6 +221,12 @@ class ReviewController extends Controller
         $dealersWithoutMaps = $dealers->count() - $dealersWithMaps;
         $totalReviewsInDb = (int) $dealers->sum('reviews_count');
 
+        $schedules = ScrapingSchedule::query()
+            ->with('dealer:id,kode_dealer,nama_dealer')
+            ->orderByDesc('is_active')
+            ->orderBy('next_run_at')
+            ->get();
+
         return Inertia::render('reviews/sync', [
             'dealers' => $dealers,
             'stats' => [
@@ -228,6 +235,7 @@ class ReviewController extends Controller
                 'dealers_without_maps' => $dealersWithoutMaps,
                 'total_reviews_db' => $totalReviewsInDb,
             ],
+            'schedules' => $schedules,
             'serverStatus' => $syncService->getStatus(),
             'serverLogs' => $syncService->getLogs(),
             'canManageAll' => true,

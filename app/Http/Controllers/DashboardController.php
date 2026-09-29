@@ -227,18 +227,33 @@ class DashboardController extends Controller
                 array_unshift($availableMonths, $currentMonth);
             }
 
-            $activeMonth = ($selectedMonth !== '' && in_array($selectedMonth, $availableMonths, true))
-                ? $selectedMonth
-                : (in_array($currentMonth, $availableMonths, true) ? $currentMonth : ($availableMonths[0] ?? $currentMonth));
+            $isAllTime = ($selectedMonth === 'all');
 
-            $monthCarbon = Carbon::parse($activeMonth.'-01');
-            $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
-            $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString();
+            if ($isAllTime) {
+                $activeMonth = 'all';
+                $prevMonth = null;
+                $monthlyReviewsQuery = Review::query();
+                $prevMonthlyReviewsQuery = null;
+            } else {
+                $activeMonth = ($selectedMonth !== '' && in_array($selectedMonth, $availableMonths, true))
+                    ? $selectedMonth
+                    : (in_array($currentMonth, $availableMonths, true) ? $currentMonth : ($availableMonths[0] ?? $currentMonth));
 
-            $prevMonthCarbon = $monthCarbon->copy()->subMonth();
-            $prevMonth = $prevMonthCarbon->format('Y-m');
-            $startOfPrevMonth = $prevMonthCarbon->copy()->startOfMonth()->toDateString();
-            $endOfPrevMonth = $prevMonthCarbon->copy()->endOfMonth()->toDateString();
+                $monthCarbon = Carbon::parse($activeMonth.'-01');
+                $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
+                $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString();
+
+                $prevMonthCarbon = $monthCarbon->copy()->subMonth();
+                $prevMonth = $prevMonthCarbon->format('Y-m');
+                $startOfPrevMonth = $prevMonthCarbon->copy()->startOfMonth()->toDateString();
+                $endOfPrevMonth = $prevMonthCarbon->copy()->endOfMonth()->toDateString();
+
+                $monthlyReviewsQuery = Review::query()
+                    ->whereBetween('tanggal_publish_review', [$startOfMonth, $endOfMonth]);
+
+                $prevMonthlyReviewsQuery = Review::query()
+                    ->whereBetween('tanggal_publish_review', [$startOfPrevMonth, $endOfPrevMonth]);
+            }
 
             $overviewDealersQuery = Dealer::query()
                 ->withCount('reviews');
@@ -249,15 +264,11 @@ class DashboardController extends Controller
 
             $allDealers = $overviewDealersQuery->get(['id', 'kode_dealer', 'nama_dealer', 'star_rate', 'total_review']);
 
-            $monthlyReviewsQuery = Review::query()
-                ->whereBetween('tanggal_publish_review', [$startOfMonth, $endOfMonth]);
-
-            $prevMonthlyReviewsQuery = Review::query()
-                ->whereBetween('tanggal_publish_review', [$startOfPrevMonth, $endOfPrevMonth]);
-
             if ($dealerScopeId) {
                 $monthlyReviewsQuery->where('dealer_id', $dealerScopeId);
-                $prevMonthlyReviewsQuery->where('dealer_id', $dealerScopeId);
+                if ($prevMonthlyReviewsQuery) {
+                    $prevMonthlyReviewsQuery->where('dealer_id', $dealerScopeId);
+                }
             }
 
             $monthlyReviews = $monthlyReviewsQuery->get([
@@ -384,8 +395,12 @@ class DashboardController extends Controller
                 'lt_days' => $avgLt,
             ];
 
-            $prevMonthlyReviews = $prevMonthlyReviewsQuery->get(['id', 'dealer_id']);
-            $prevMonthlyByDealer = $prevMonthlyReviews->groupBy('dealer_id')->map->count();
+            if ($prevMonthlyReviewsQuery) {
+                $prevMonthlyReviews = $prevMonthlyReviewsQuery->get(['id', 'dealer_id']);
+                $prevMonthlyByDealer = $prevMonthlyReviews->groupBy('dealer_id')->map->count();
+            } else {
+                $prevMonthlyByDealer = collect();
+            }
 
             $monitoringFeedback = $allDealers->map(function (Dealer $dealer) use ($monthlyByDealer, $prevMonthlyByDealer): array {
                 $reviews = $monthlyByDealer->get($dealer->id, collect());
@@ -469,10 +484,12 @@ class DashboardController extends Controller
             $totAch = $totM > 0 ? round(($totFeedbackDone / $totM) * 100, 2) : 0.0;
 
             $totGrowth = null;
-            if ($totM1 > 0) {
-                $totGrowth = (int) round((($totM - $totM1) / $totM1) * 100);
-            } elseif ($totM1 === 0 && $totM > 0) {
-                $totGrowth = 100;
+            if (! $isAllTime) {
+                if ($totM1 > 0) {
+                    $totGrowth = (int) round((($totM - $totM1) / $totM1) * 100);
+                } elseif ($totM1 === 0 && $totM > 0) {
+                    $totGrowth = 100;
+                }
             }
 
             $validScores = $mfCollection->pluck('gmb_score')->filter(fn ($s) => $s !== null);
@@ -503,7 +520,7 @@ class DashboardController extends Controller
         $wordCloudAllTime = $this->extractWordCloud($allTimeReviews, 140);
 
         $wordCloudData = $wordCloudAllTime;
-        if ($isGlobal && $activeMonth) {
+        if ($isGlobal && $activeMonth && $activeMonth !== 'all') {
             $monthCarbon = Carbon::parse($activeMonth.'-01');
             $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
             $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString();

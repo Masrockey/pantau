@@ -338,3 +338,42 @@ test('dealer user only receives their own dealer in gmbClusterDealers', function
             ->where('gmbClusterDealers.0.cluster_zone', 'EXCELLENT ZONE')
         );
 });
+
+test('global user can filter dashboard with month=all for all-time review metrics', function () {
+    $admin = User::factory()->superAdmin()->create();
+    $dealer = Dealer::factory()->create([
+        'kode_dealer' => 'DLR999',
+        'nama_dealer' => 'Dealer Bintang Lima',
+        'star_rate' => 5.0,
+        'total_review' => 50,
+    ]);
+
+    // Review from 6 months ago
+    Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'star_rate' => 5,
+        'respon_from_owner' => true,
+        'tanggal_publish_review' => '2025-01-10',
+    ]);
+
+    // Review from this month
+    Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'star_rate' => 4,
+        'respon_from_owner' => false,
+        'tanggal_publish_review' => now()->toDateString(),
+    ]);
+
+    $response = $this->actingAs($admin)->get(route('dashboard', ['month' => 'all']));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->where('activeMonth', 'all')
+            ->where('prevMonth', null)
+            ->has('dealerOverview')
+            ->where('dealerOverview.0.review_monthly', 2)
+            ->where('dealerOverview.0.rating_5', 1)
+            ->where('dealerOverview.0.rating_4', 1)
+        );
+});

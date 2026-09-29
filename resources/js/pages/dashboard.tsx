@@ -1,13 +1,16 @@
 import { Head, Link, router } from '@inertiajs/react';
 import {
+    Activity,
     AlertCircle,
     ArrowRight,
     ArrowUpRight,
+    BarChart3,
     Building2,
     CheckCircle2,
     ChevronLeft,
     ChevronRight,
     Clock,
+    Compass,
     ExternalLink,
     Filter,
     HelpCircle,
@@ -21,18 +24,15 @@ import {
 } from 'lucide-react';
 import React from 'react';
 import DealerMap, { MapDealer } from '@/components/dashboard/dealer-map';
-import {
-    DealerOverview,
+import type {
     DealerOverviewItem,
     DealerOverviewSummary,
 } from '@/components/dashboard/dealer-overview';
-import {
-    GmbCluster,
+import type {
     GmbClusterDealerItem,
     GmbClusterSummary,
 } from '@/components/dashboard/gmb-cluster';
-import {
-    MonitoringFeedback,
+import type {
     MonitoringFeedbackItem,
     MonitoringFeedbackSummary,
 } from '@/components/dashboard/monitoring-feedback';
@@ -44,7 +44,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { dashboard } from '@/routes';
+import dealerOverviewRoute from '@/routes/dealer-overview';
 import dealersRoute from '@/routes/dealers';
+import gmbClusterRoute from '@/routes/gmb-cluster';
+import monitoringFeedbackRoute from '@/routes/monitoring-feedback';
 import reviewsRoute from '@/routes/reviews';
 import syncRoute from '@/routes/reviews/sync';
 
@@ -511,35 +514,150 @@ export default function Dashboard({
                     </Card>
                 </div>
 
-                {/* Monitoring Feedback Section (For Super Admin and Main Dealer) */}
-                {isGlobal && monitoringFeedback.length > 0 && (
-                    <MonitoringFeedback
-                        dealers={monitoringFeedback}
-                        summary={monitoringSummary}
-                        availableMonths={availableMonths}
-                        activeMonth={activeMonth}
-                        prevMonth={prevMonth}
-                        selectedDealerId={selectedDealerId}
-                    />
-                )}
+                {/* Advanced Analytics Navigation Cards (Monitoring Feedback, Dealer Overview, GMB Cluster) */}
+                {isGlobal && (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        {/* Monitoring Feedback Card */}
+                        <Card className="flex flex-col justify-between transition-all hover:border-emerald-500/50 hover:shadow-sm">
+                            <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="rounded-lg bg-emerald-500/10 p-2 text-emerald-600 dark:text-emerald-400">
+                                            <Activity className="size-5" />
+                                        </div>
+                                        <div>
+                                            <CardTitle className="text-base font-semibold">Monitoring Feedback</CardTitle>
+                                            <span className="text-[11px] text-muted-foreground">SLA & Respon Review</span>
+                                        </div>
+                                    </div>
+                                    <Badge variant="outline" className="border-emerald-500/30 px-1.5 py-0 text-[10px] text-emerald-600 dark:text-emerald-400">
+                                        Menu Khusus
+                                    </Badge>
+                                </div>
+                                <CardDescription className="mt-2 line-clamp-2 text-xs">
+                                    Pantau SLA respon review, pencapaian feedback (% Ach), dan lead time respon (LT Day) seluruh dealer.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="pb-3">
+                                <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/50 bg-muted/40 p-2.5 text-xs">
+                                    <div>
+                                        <span className="block text-[11px] text-muted-foreground">Ach Feedback</span>
+                                        <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                                            {monitoringSummary?.ach_feedback ?? 0}%
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[11px] text-muted-foreground">Rata-rata LT</span>
+                                        <span className="text-sm font-bold">
+                                            {monitoringSummary?.lt_day !== null && monitoringSummary?.lt_day !== undefined ? `${monitoringSummary.lt_day} Hari` : '-'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                            <CardFooter className="pt-0">
+                                <Button variant="outline" size="sm" asChild className="w-full gap-1.5 text-xs font-medium hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600">
+                                    <Link href={monitoringFeedbackRoute.index()}>
+                                        Buka Monitoring Feedback
+                                        <ArrowUpRight className="size-3.5" />
+                                    </Link>
+                                </Button>
+                            </CardFooter>
+                        </Card>
 
-                {/* Dealer Overview Matrix & Chart Section (For Super Admin and Main Dealer) */}
-                {isGlobal && dealerOverview.length > 0 && (
-                    <DealerOverview
-                        dealers={dealerOverview}
-                        summary={overviewSummary}
-                        availableMonths={availableMonths}
-                        activeMonth={activeMonth}
-                        selectedDealerId={selectedDealerId}
-                    />
-                )}
+                        {/* Dealer Overview Card */}
+                        <Card className="flex flex-col justify-between transition-all hover:border-blue-500/50 hover:shadow-sm">
+                            <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="rounded-lg bg-blue-500/10 p-2 text-blue-600 dark:text-blue-400">
+                                            <BarChart3 className="size-5" />
+                                        </div>
+                                        <div>
+                                            <CardTitle className="text-base font-semibold">Dealer Overview</CardTitle>
+                                            <span className="text-[11px] text-muted-foreground">Matriks & Kontribusi Rating</span>
+                                        </div>
+                                    </div>
+                                    <Badge variant="outline" className="border-blue-500/30 px-1.5 py-0 text-[10px] text-blue-600 dark:text-blue-400">
+                                        Menu Khusus
+                                    </Badge>
+                                </div>
+                                <CardDescription className="mt-2 line-clamp-2 text-xs">
+                                    Analisis matriks review bulanan, kontribusi rating bintang 1-5, dan komparasi performa dealer.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="pb-3">
+                                <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/50 bg-muted/40 p-2.5 text-xs">
+                                    <div>
+                                        <span className="block text-[11px] text-muted-foreground">Review Bulanan</span>
+                                        <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                                            {overviewSummary?.review_monthly?.toLocaleString('id-ID') ?? 0}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[11px] text-muted-foreground">Rata-rata Rating</span>
+                                        <span className="text-sm font-bold">
+                                            ★ {overviewSummary?.gmb_score ?? '-'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                            <CardFooter className="pt-0">
+                                <Button variant="outline" size="sm" asChild className="w-full gap-1.5 text-xs font-medium hover:border-blue-500/40 hover:bg-blue-500/10 hover:text-blue-600">
+                                    <Link href={dealerOverviewRoute.index()}>
+                                        Buka Dealer Overview
+                                        <ArrowUpRight className="size-3.5" />
+                                    </Link>
+                                </Button>
+                            </CardFooter>
+                        </Card>
 
-                {/* GMB Cluster Quadrant Matrix & Distribution Section */}
-                {gmbClusterDealers.length > 0 && (
-                    <GmbCluster
-                        dealers={gmbClusterDealers}
-                        summary={gmbClusterSummary}
-                    />
+                        {/* GMB Cluster Card */}
+                        <Card className="flex flex-col justify-between transition-all hover:border-purple-500/50 hover:shadow-sm">
+                            <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="rounded-lg bg-purple-500/10 p-2 text-purple-600 dark:text-purple-400">
+                                            <Compass className="size-5" />
+                                        </div>
+                                        <div>
+                                            <CardTitle className="text-base font-semibold">GMB Cluster</CardTitle>
+                                            <span className="text-[11px] text-muted-foreground">Analisis Kuadran & Zonasi</span>
+                                        </div>
+                                    </div>
+                                    <Badge variant="outline" className="border-purple-500/30 px-1.5 py-0 text-[10px] text-purple-600 dark:text-purple-400">
+                                        Menu Khusus
+                                    </Badge>
+                                </div>
+                                <CardDescription className="mt-2 line-clamp-2 text-xs">
+                                    Segmentasi kuadran 4 zona: Excellent, Volume, Quality, dan Improvement Zone untuk pembinaan dealer.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="pb-3">
+                                <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/50 bg-muted/40 p-2.5 text-xs">
+                                    <div>
+                                        <span className="block text-[11px] text-muted-foreground">Excellent Zone</span>
+                                        <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                                            {gmbClusterSummary?.zones?.['EXCELLENT ZONE']?.count ?? 0} Dealer ({gmbClusterSummary?.zones?.['EXCELLENT ZONE']?.percentage ?? 0}%)
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="block text-[11px] text-muted-foreground">Improvement</span>
+                                        <span className="text-sm font-bold text-rose-500">
+                                            {gmbClusterSummary?.zones?.['IMPROVEMENT ZONE']?.count ?? 0} Dealer
+                                        </span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                            <CardFooter className="pt-0">
+                                <Button variant="outline" size="sm" asChild className="w-full gap-1.5 text-xs font-medium hover:border-purple-500/40 hover:bg-purple-500/10 hover:text-purple-600">
+                                    <Link href={gmbClusterRoute.index()}>
+                                        Buka GMB Cluster
+                                        <ArrowUpRight className="size-3.5" />
+                                    </Link>
+                                </Button>
+                            </CardFooter>
+                        </Card>
+                    </div>
                 )}
 
                 {/* Review Text Word Cloud Visualization */}

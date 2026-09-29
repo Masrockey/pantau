@@ -452,10 +452,10 @@ export default function DealerMap({
                     <div>
                         <div className="flex items-center gap-2">
                             <h2 className="font-semibold text-sm sm:text-base tracking-tight text-foreground">
-                                Peta Sebaran Pin Point Showroom Dealer
+                                Peta Sebaran Dealer Honda
                             </h2>
                             <Badge variant="secondary" className="font-mono text-xs font-semibold">
-                                {filteredDealers.length} Showroom
+                                {filteredDealers.length} Dealer
                             </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">
@@ -470,7 +470,7 @@ export default function DealerMap({
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                         <input
                             type="text"
-                            placeholder="Cari showroom / kecamatan..."
+                            placeholder="Cari Dealer. . ."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-2.5 text-xs shadow-2xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -556,11 +556,7 @@ export default function DealerMap({
                 <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3 rounded-lg border bg-background/90 px-3 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
                         <img src="/pinpoint-icon.png" alt="Pin" className="h-3.5 w-auto object-contain" />
-                        Showroom Honda
-                    </span>
-                    <span className="flex items-center gap-1.5 text-primary">
-                        <span className="size-2 rounded-full bg-primary ring-2 ring-primary/40"></span>
-                        Terpilih
+                        Dealer Honda
                     </span>
                 </div>
             </div>

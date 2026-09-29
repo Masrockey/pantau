@@ -74,6 +74,7 @@ type SortKey = keyof DealerOverviewItem;
 
 function formatMonthLabel(ym: string): string {
     if (!ym) return '';
+    if (ym === 'all' || ym.toLowerCase() === 'all') return 'All Tanggal';
     const parts = ym.split('-');
     if (parts.length !== 2) return ym;
     const [year, month] = parts;
@@ -178,7 +179,7 @@ export function DealerOverview({
             currentParams.delete('month');
         }
         router.get(
-            dashboard(),
+            window.location.pathname,
             Object.fromEntries(currentParams.entries()),
             { preserveState: true, preserveScroll: true }
         );
@@ -356,10 +357,13 @@ export function DealerOverview({
                         <div className="flex items-center gap-1.5 text-xs bg-muted/50 rounded-md border px-2 py-1">
                             <Calendar className="size-3.5 text-muted-foreground" />
                             <select
-                                value={activeMonth ?? ''}
+                                value={activeMonth ?? 'all'}
                                 onChange={handleMonthChange}
                                 className="bg-transparent text-xs font-medium focus:outline-none cursor-pointer"
                             >
+                                <option value="all" className="bg-background text-foreground">
+                                    All Tanggal
+                                </option>
                                 {availableMonths.map((m) => (
                                     <option key={m} value={m} className="bg-background text-foreground">
                                         {formatMonthLabel(m)}
@@ -456,7 +460,7 @@ export function DealerOverview({
                                         onClick={() => handleSort('review_monthly')}
                                         className="bg-slate-900 px-2.5 py-2.5 text-center cursor-pointer hover:bg-slate-800 transition-colors border-r border-slate-700/60"
                                     >
-                                        REVIEW MONTHLY {renderSortArrow('review_monthly')}
+                                        {activeMonth === 'all' ? 'REVIEW (ALL TANGGAL)' : 'REVIEW MONTHLY'} {renderSortArrow('review_monthly')}
                                     </th>
                                     <th
                                         onClick={() => handleSort('gmb_score')}
@@ -693,7 +697,9 @@ export function DealerOverview({
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {/* Summary Card 1 */}
                             <div className="rounded-xl border p-4 bg-muted/20">
-                                <div className="text-xs text-muted-foreground font-medium">Total Ulasan Bulan Ini</div>
+                                <div className="text-xs text-muted-foreground font-medium">
+                                    {activeMonth === 'all' ? 'Total Ulasan (All Tanggal)' : 'Total Ulasan Bulan Ini'}
+                                </div>
                                 <div className="text-2xl font-bold mt-1 text-foreground">
                                     {summary?.review_monthly.toLocaleString('id-ID') ?? 0}
                                 </div>
