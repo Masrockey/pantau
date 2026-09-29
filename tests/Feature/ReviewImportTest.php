@@ -3,6 +3,7 @@
 use App\Models\Dealer;
 use App\Models\Review;
 use App\Models\User;
+use App\Services\ReviewExcelService;
 use Illuminate\Http\UploadedFile;
 
 test('authenticated user can download review template', function (): void {
@@ -158,5 +159,35 @@ test('can import review file larger than 2MB', function (): void {
     $this->assertDatabaseHas('reviews', [
         'dealer_id' => $dealer->id,
         'nama_reviewer' => 'Reviewer Besar',
+    ]);
+});
+
+test('can import reviews from real xlsx binary spreadsheet', function (): void {
+    $user = User::factory()->create();
+    $dealer1 = Dealer::factory()->create(['kode_dealer' => 'DLR001']);
+    $dealer2 = Dealer::factory()->create(['kode_dealer' => 'DLR002']);
+
+    $excelService = app(ReviewExcelService::class);
+    $xlsxBinary = $excelService->generateTemplateXlsx();
+
+    $file = UploadedFile::fake()->createWithContent('template.xlsx', $xlsxBinary);
+
+    $response = $this->actingAs($user)->post(route('reviews.import'), [
+        'file' => $file,
+        'update_existing' => true,
+    ]);
+
+    $response->assertRedirect(route('reviews.index'));
+
+    $this->assertDatabaseHas('reviews', [
+        'dealer_id' => $dealer1->id,
+        'nama_reviewer' => 'Budi Santoso',
+        'star_rate' => 5.0,
+    ]);
+
+    $this->assertDatabaseHas('reviews', [
+        'dealer_id' => $dealer2->id,
+        'nama_reviewer' => 'Ahmad Pratama',
+        'star_rate' => 5.0,
     ]);
 });

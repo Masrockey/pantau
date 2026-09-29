@@ -25,7 +25,6 @@ export interface GmbClusterDealerItem {
     id: number;
     kode_dealer: string;
     nama_dealer: string;
-    region: string;
     gmb_score: number | null;
     total_review: number;
     cluster_zone: ClusterZoneType;
@@ -198,10 +197,9 @@ export function GmbCluster({ dealers = [], summary = null }: GmbClusterProps) {
     // Export CSV handler
     const handleExportCsv = () => {
         const rows = [
-            ['NAMA DEALER', 'REGION', 'GMB SCORE', 'J. REVIEW ALL', 'CLUSTER ZONE'],
+            ['NAMA DEALER', 'GMB SCORE', 'J. REVIEW ALL', 'CLUSTER ZONE'],
             ...sortedDealers.map((d) => [
                 `"${d.nama_dealer.replace(/"/g, '""')}"`,
-                d.region,
                 d.gmb_score !== null ? d.gmb_score.toFixed(2) : '',
                 d.total_review,
                 d.cluster_zone,
@@ -328,9 +326,6 @@ export function GmbCluster({ dealers = [], summary = null }: GmbClusterProps) {
                                         >
                                             NAMA DEALER
                                         </th>
-                                        <th className="px-2 py-2 text-center border-r border-blue-900/40 w-14">
-                                            REGION
-                                        </th>
                                         <th
                                             onClick={() => {
                                                 setSortKey('gmb_score');
@@ -388,9 +383,6 @@ export function GmbCluster({ dealers = [], summary = null }: GmbClusterProps) {
                                                     <td className="px-2.5 py-1.5 font-sans font-medium text-foreground truncate max-w-[170px]" title={d.nama_dealer}>
                                                         {d.nama_dealer}
                                                     </td>
-                                                    <td className="px-2 py-1.5 text-center text-muted-foreground font-sans">
-                                                        {d.region}
-                                                    </td>
                                                     <td className="px-2 py-1.5 text-center font-bold text-foreground">
                                                         {d.gmb_score !== null ? d.gmb_score.toFixed(2) : '-'}
                                                     </td>
@@ -416,7 +408,6 @@ export function GmbCluster({ dealers = [], summary = null }: GmbClusterProps) {
                                 <tfoot className="sticky bottom-0 z-10 bg-slate-900 text-white font-bold text-[11px] shadow-sm">
                                     <tr className="border-t border-slate-700">
                                         <td className="px-2.5 py-2 font-sans">Total</td>
-                                        <td className="px-2 py-2 text-center font-sans">NTB</td>
                                         <td className="px-2 py-2 text-center font-mono text-amber-400">
                                             {computedSummary.avg_gmb_score.toFixed(2)}
                                         </td>

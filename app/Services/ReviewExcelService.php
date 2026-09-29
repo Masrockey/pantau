@@ -7,6 +7,8 @@ use App\Models\Review;
 use Exception;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use XMLReader;
 use ZipArchive;
 
 class ReviewExcelService
@@ -19,7 +21,7 @@ class ReviewExcelService
     public function import(UploadedFile $file, bool $updateExisting = true, ?int $scopedDealerId = null): array
     {
         @ini_set('memory_limit', '512M');
-        @set_time_limit(300);
+        @set_time_limit(600);
 
         $rows = $this->readRows($file);
 
@@ -40,10 +42,83 @@ class ReviewExcelService
             );
         }
 
+        // 1. Pre-fetch dealers into memory map for O(1) lookups
+        $dealers = $scopedDealerId ? Dealer::where('id', $scopedDealerId)->get() : Dealer::all();
+        $dealersByCode = [];
+        $dealersByName = [];
+
+        foreach ($dealers as $d) {
+            $code = strtoupper(trim((string) $d->kode_dealer));
+            $dealersByCode[$code] = $d;
+
+            $cleanCode = ltrim($code, '0');
+            if ($cleanCode !== '') {
+                $dealersByCode[$cleanCode] = $d;
+            }
+
+            $dealersByName[mb_strtolower(trim($d->nama_dealer))] = $d;
+        }
+
+        // 2. Pre-fetch existing reviews in ONE single query for O(1) in-memory matching
+        $reviewsQuery = Review::query()->select([
+            'id',
+            'dealer_id',
+            'nama_reviewer',
+            'tanggal_publish_review',
+            'star_rate',
+            'review',
+            'respon_from_owner',
+            'tanggal_respon',
+            'respon',
+            'google_review_url',
+        ]);
+
+        if ($scopedDealerId) {
+            $reviewsQuery->where('dealer_id', $scopedDealerId);
+        }
+
+        $existingReviews = $reviewsQuery->get();
+
+        $existingByUrl = [];
+        $existingByNameDate = [];
+        $existingByName = [];
+        $existingByTextHash = [];
+
+        foreach ($existingReviews as $rev) {
+            $dId = (int) $rev->dealer_id;
+
+            if ($rev->google_review_url) {
+                $existingByUrl[$dId][trim((string) $rev->google_review_url)] = $rev;
+            }
+
+            $cleanName = mb_strtolower(trim((string) ($rev->nama_reviewer ?? '')));
+            $pubDate = $rev->tanggal_publish_review
+                ? ($rev->tanggal_publish_review instanceof Carbon
+                    ? $rev->tanggal_publish_review->format('Y-m-d')
+                    : Carbon::parse($rev->tanggal_publish_review)->format('Y-m-d'))
+                : '';
+
+            if ($cleanName !== '') {
+                if ($pubDate !== '') {
+                    $existingByNameDate[$dId][$cleanName.'|'.$pubDate] = $rev;
+                }
+                if (! isset($existingByName[$dId][$cleanName])) {
+                    $existingByName[$dId][$cleanName] = $rev;
+                }
+            }
+
+            if ($rev->review && mb_strlen($rev->review) >= 8) {
+                $existingByTextHash[$dId][md5($rev->review)] = $rev;
+            }
+        }
+
+        $toInsert = [];
+        $toUpdate = [];
         $imported = 0;
         $updated = 0;
         $errors = [];
         $affectedDealerIds = [];
+        $now = now()->toDateTimeString();
 
         foreach ($rows as $rowIndex => $row) {
             $rowNumber = $rowIndex + 2; // +1 for 0-indexed, +1 for header row
@@ -84,14 +159,26 @@ class ReviewExcelService
                 continue;
             }
 
-            // Determine dealer
+            // Determine dealer using fast in-memory lookups
             $dealer = null;
             if ($scopedDealerId) {
-                $dealer = Dealer::find($scopedDealerId);
+                $dealer = $dealers->firstWhere('id', $scopedDealerId);
             } elseif ($kodeDealer !== '') {
-                $dealer = Dealer::where('kode_dealer', strtoupper($kodeDealer))->first();
+                $upperKode = strtoupper($kodeDealer);
+                $dealer = $dealersByCode[$upperKode]
+                    ?? $dealersByCode[ltrim($upperKode, '0')]
+                    ?? null;
             } elseif ($namaDealer !== '') {
-                $dealer = Dealer::where('nama_dealer', 'like', "%{$namaDealer}%")->first();
+                $lowerNama = mb_strtolower($namaDealer);
+                $dealer = $dealersByName[$lowerNama] ?? null;
+                if (! $dealer) {
+                    foreach ($dealersByName as $dName => $dObj) {
+                        if (str_contains($dName, $lowerNama) || str_contains($lowerNama, $dName)) {
+                            $dealer = $dObj;
+                            break;
+                        }
+                    }
+                }
             }
 
             if (! $dealer) {
@@ -100,6 +187,8 @@ class ReviewExcelService
 
                 continue;
             }
+
+            $dId = (int) $dealer->id;
 
             // Fallback for reviewer name
             if ($namaReviewer === '') {
@@ -122,104 +211,166 @@ class ReviewExcelService
             }
 
             // Parse owner response
-            $hasOwnerResponse = $this->parseBoolean($rawResponOwner);
-            if (! empty($responText)) {
-                $hasOwnerResponse = true;
-            }
-
+            $hasOwnerResponse = $this->parseBoolean($rawResponOwner) || ! empty($responText);
             $tanggalRespon = null;
             if ($hasOwnerResponse) {
-                $tanggalRespon = $this->parseDate($rawTanggalRespon);
-                if (! $tanggalRespon) {
-                    $tanggalRespon = $publishDate;
-                }
+                $tanggalRespon = $this->parseDate($rawTanggalRespon) ?: $publishDate;
             }
 
-            // Deduplication / finding existing review
+            $cleanName = mb_strtolower($namaReviewer);
             $isAnonymous = in_array(
-                mb_strtolower($namaReviewer),
+                $cleanName,
                 ['pengguna google', 'google user', 'a google user', 'anonymous', 'google customer', 'pelanggan google'],
                 true
             );
 
-            $existing = null;
+            // In-memory matching (O(1) hash lookups, zero SQL queries)
+            $matched = null;
 
             // 1. Match by google_review_url if provided
-            if ($googleReviewUrl !== '') {
-                $existing = Review::where('dealer_id', $dealer->id)
-                    ->where('google_review_url', $googleReviewUrl)
-                    ->first();
+            if ($googleReviewUrl !== '' && isset($existingByUrl[$dId][$googleReviewUrl])) {
+                $matched = $existingByUrl[$dId][$googleReviewUrl];
             }
 
             // 2. Match by author and publish date
-            if (! $existing && ! $isAnonymous) {
-                $existing = Review::where('dealer_id', $dealer->id)
-                    ->where('nama_reviewer', $namaReviewer)
-                    ->whereDate('tanggal_publish_review', $publishDate)
-                    ->first();
-
-                // If date was generic or not matched, match by author name on same dealer
-                if (! $existing) {
-                    $existing = Review::where('dealer_id', $dealer->id)
-                        ->where('nama_reviewer', $namaReviewer)
-                        ->first();
-                }
+            if (! $matched && ! $isAnonymous && isset($existingByNameDate[$dId][$cleanName.'|'.$publishDate])) {
+                $matched = $existingByNameDate[$dId][$cleanName.'|'.$publishDate];
             }
 
-            // 3. Match by review text if non-empty
-            if (! $existing && $reviewText !== '' && mb_strlen($reviewText) >= 8) {
-                $existing = Review::where('dealer_id', $dealer->id)
-                    ->where('review', $reviewText)
-                    ->first();
+            // 3. Match by author name on same dealer
+            if (! $matched && ! $isAnonymous && isset($existingByName[$dId][$cleanName])) {
+                $matched = $existingByName[$dId][$cleanName];
             }
 
-            if ($existing) {
+            // 4. Match by review text if non-empty
+            if (! $matched && $reviewText !== '' && mb_strlen($reviewText) >= 8 && isset($existingByTextHash[$dId][md5($reviewText)])) {
+                $matched = $existingByTextHash[$dId][md5($reviewText)];
+            }
+
+            if ($matched) {
                 if ($updateExisting) {
-                    $existing->update([
-                        'nama_reviewer' => $namaReviewer,
-                        'tanggal_publish_review' => $publishDate,
-                        'star_rate' => $starRate,
-                        'review' => $reviewText !== '' ? $reviewText : $existing->review,
-                        'respon_from_owner' => $hasOwnerResponse,
-                        'tanggal_respon' => $hasOwnerResponse ? ($tanggalRespon ?: $existing->tanggal_respon) : null,
-                        'respon' => $hasOwnerResponse ? ($responText !== '' ? $responText : $existing->respon) : null,
-                        'google_review_url' => $googleReviewUrl !== '' ? $googleReviewUrl : $existing->google_review_url,
-                    ]);
+                    $existingPubDate = $matched->tanggal_publish_review instanceof Carbon
+                        ? $matched->tanggal_publish_review->format('Y-m-d')
+                        : (string) $matched->tanggal_publish_review;
+                    $existingRespDate = $matched->tanggal_respon instanceof Carbon
+                        ? $matched->tanggal_respon->format('Y-m-d')
+                        : (string) $matched->tanggal_respon;
+
+                    $starChanged = abs((float) $matched->star_rate - $starRate) > 0.01;
+                    $responChanged = (bool) $matched->respon_from_owner !== $hasOwnerResponse;
+                    $textChanged = $reviewText !== '' && $reviewText !== (string) $matched->review;
+                    $replyChanged = $hasOwnerResponse && $responText !== '' && $responText !== (string) $matched->respon;
+                    $dateChanged = $publishDate !== '' && $publishDate !== $existingPubDate;
+                    $urlChanged = $googleReviewUrl !== '' && $googleReviewUrl !== (string) $matched->google_review_url;
+                    $respDateChanged = $hasOwnerResponse && $tanggalRespon !== null && $tanggalRespon !== $existingRespDate;
+
+                    if ($starChanged || $responChanged || $textChanged || $replyChanged || $dateChanged || $urlChanged || $respDateChanged) {
+                        $toUpdate[] = [
+                            'id' => $matched->id,
+                            'nama_reviewer' => $namaReviewer,
+                            'tanggal_publish_review' => $publishDate,
+                            'star_rate' => $starRate,
+                            'review' => $reviewText !== '' ? $reviewText : $matched->review,
+                            'respon_from_owner' => $hasOwnerResponse ? 1 : 0,
+                            'tanggal_respon' => $hasOwnerResponse ? ($tanggalRespon ?: $matched->tanggal_respon) : null,
+                            'respon' => $hasOwnerResponse ? ($responText !== '' ? $responText : $matched->respon) : null,
+                            'google_review_url' => $googleReviewUrl !== '' ? $googleReviewUrl : $matched->google_review_url,
+                        ];
+
+                        // Update in-memory copy so subsequent lines within the file see the latest state
+                        $matched->nama_reviewer = $namaReviewer;
+                        $matched->tanggal_publish_review = $publishDate;
+                        $matched->star_rate = $starRate;
+                        $matched->review = $reviewText !== '' ? $reviewText : $matched->review;
+                        $matched->respon_from_owner = $hasOwnerResponse;
+                        $matched->tanggal_respon = $hasOwnerResponse ? ($tanggalRespon ?: $matched->tanggal_respon) : null;
+                        $matched->respon = $hasOwnerResponse ? ($responText !== '' ? $responText : $matched->respon) : null;
+                        $matched->google_review_url = $googleReviewUrl !== '' ? $googleReviewUrl : $matched->google_review_url;
+                    }
+
                     $updated++;
-                    $affectedDealerIds[$dealer->id] = true;
+                    $affectedDealerIds[$dId] = true;
                 }
             } else {
-                Review::create([
-                    'dealer_id' => $dealer->id,
+                $newRec = [
+                    'dealer_id' => $dId,
                     'nama_reviewer' => $namaReviewer,
                     'tanggal_publish_review' => $publishDate,
                     'star_rate' => $starRate,
                     'review' => $reviewText !== '' ? $reviewText : null,
-                    'respon_from_owner' => $hasOwnerResponse,
+                    'respon_from_owner' => $hasOwnerResponse ? 1 : 0,
                     'tanggal_respon' => $hasOwnerResponse ? $tanggalRespon : null,
                     'respon' => $hasOwnerResponse && $responText !== '' ? $responText : null,
                     'google_review_url' => $googleReviewUrl !== '' ? $googleReviewUrl : null,
-                ]);
-                $imported++;
-                $affectedDealerIds[$dealer->id] = true;
-            }
-        }
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
 
-        // Recalculate stats for affected dealers
-        foreach (array_keys($affectedDealerIds) as $dId) {
-            $d = Dealer::find($dId);
-            if ($d) {
-                $dReviews = Review::where('dealer_id', $dId);
-                $count = $dReviews->count();
-                if ($count > 0) {
-                    $avg = round((float) $dReviews->avg('star_rate'), 2);
-                    $d->update([
-                        'total_review' => $count,
-                        'star_rate' => $avg,
-                    ]);
+                $toInsert[] = $newRec;
+                $imported++;
+                $affectedDealerIds[$dId] = true;
+
+                // Register into in-memory maps to prevent duplicate inserts within the same spreadsheet
+                $mockObj = (object) $newRec;
+                $mockObj->id = -1;
+
+                if ($googleReviewUrl !== '') {
+                    $existingByUrl[$dId][$googleReviewUrl] = $mockObj;
+                }
+                if (! $isAnonymous) {
+                    $existingByNameDate[$dId][$cleanName.'|'.$publishDate] = $mockObj;
+                    if (! isset($existingByName[$dId][$cleanName])) {
+                        $existingByName[$dId][$cleanName] = $mockObj;
+                    }
+                }
+                if ($reviewText !== '' && mb_strlen($reviewText) >= 8) {
+                    $existingByTextHash[$dId][md5($reviewText)] = $mockObj;
                 }
             }
         }
+
+        // 3. High-performance bulk database transaction
+        DB::transaction(function () use ($toInsert, $toUpdate, $affectedDealerIds, $now): void {
+            // Bulk insert in chunks of 500 rows
+            foreach (array_chunk($toInsert, 500) as $chunk) {
+                Review::insert($chunk);
+            }
+
+            // Bulk update using prepared statement inside transaction
+            if (! empty($toUpdate)) {
+                $pdo = DB::connection()->getPdo();
+                $stmt = $pdo->prepare('UPDATE reviews SET nama_reviewer = ?, tanggal_publish_review = ?, star_rate = ?, review = ?, respon_from_owner = ?, tanggal_respon = ?, respon = ?, google_review_url = ?, updated_at = ? WHERE id = ?');
+
+                foreach ($toUpdate as $item) {
+                    $stmt->execute([
+                        $item['nama_reviewer'],
+                        $item['tanggal_publish_review'],
+                        $item['star_rate'],
+                        $item['review'],
+                        $item['respon_from_owner'],
+                        $item['tanggal_respon'],
+                        $item['respon'],
+                        $item['google_review_url'],
+                        $now,
+                        $item['id'],
+                    ]);
+                }
+            }
+
+            // Recalculate stats for affected dealers
+            foreach (array_keys($affectedDealerIds) as $dId) {
+                $stats = Review::where('dealer_id', $dId)
+                    ->selectRaw('COUNT(*) as total, AVG(star_rate) as avg_star')
+                    ->first();
+
+                if ($stats && $stats->total > 0) {
+                    Dealer::where('id', $dId)->update([
+                        'total_review' => (int) $stats->total,
+                        'star_rate' => round((float) $stats->avg_star, 2),
+                    ]);
+                }
+            }
+        });
 
         return [
             'imported' => $imported,
@@ -301,7 +452,7 @@ class ReviewExcelService
     }
 
     /**
-     * Read rows from an XLSX spreadsheet using ZipArchive and XML parsing.
+     * Read rows from an XLSX spreadsheet using XMLReader streaming for minimal memory and maximum speed.
      *
      * @return array<int, array<int, string>>
      */
@@ -312,91 +463,146 @@ class ReviewExcelService
             throw new Exception('Gagal membuka file Excel (.xlsx).');
         }
 
-        // 1. Read shared strings
-        $sharedStrings = [];
-        $sharedStringsContent = $zip->getFromName('xl/sharedStrings.xml');
-        if ($sharedStringsContent !== false) {
-            $xml = simplexml_load_string($sharedStringsContent);
-            if ($xml && isset($xml->si)) {
-                foreach ($xml->si as $si) {
-                    if (isset($si->t)) {
-                        $sharedStrings[] = (string) $si->t;
-                    } elseif (isset($si->r)) {
-                        $text = '';
-                        foreach ($si->r as $r) {
-                            $text .= (string) $r->t;
-                        }
-                        $sharedStrings[] = $text;
-                    } else {
-                        $sharedStrings[] = '';
+        $tempDir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'xlsx_read_'.uniqid('', true);
+        if (! @mkdir($tempDir, 0777, true)) {
+            $zip->close();
+            throw new Exception('Gagal membuat direktori sementara untuk memproses Excel.');
+        }
+
+        try {
+            // Locate worksheet
+            $sheetPath = 'xl/worksheets/sheet1.xml';
+            if ($zip->locateName($sheetPath) === false) {
+                $found = false;
+                for ($i = 0; $i < $zip->numFiles; $i++) {
+                    $name = (string) $zip->getNameIndex($i);
+                    if (str_starts_with($name, 'xl/worksheets/sheet') && str_ends_with($name, '.xml')) {
+                        $sheetPath = $name;
+                        $found = true;
+                        break;
                     }
                 }
-            }
-        }
-
-        // 2. Locate worksheet
-        $sheetPath = 'xl/worksheets/sheet1.xml';
-        if ($zip->locateName($sheetPath) === false) {
-            $found = false;
-            for ($i = 0; $i < $zip->numFiles; $i++) {
-                $name = $zip->getNameIndex($i);
-                if (str_starts_with((string) $name, 'xl/worksheets/sheet') && str_ends_with((string) $name, '.xml')) {
-                    $sheetPath = (string) $name;
-                    $found = true;
-                    break;
+                if (! $found) {
+                    throw new Exception('Tidak ada lembar kerja (worksheet) dalam file Excel.');
                 }
             }
-            if (! $found) {
-                $zip->close();
-                throw new Exception('Tidak ada lembar kerja (worksheet) dalam file Excel.');
+
+            // Extract only the worksheet and sharedStrings (if present)
+            $filesToExtract = [$sheetPath];
+            $hasSharedStrings = $zip->locateName('xl/sharedStrings.xml') !== false;
+            if ($hasSharedStrings) {
+                $filesToExtract[] = 'xl/sharedStrings.xml';
             }
-        }
 
-        $sheetContent = $zip->getFromName($sheetPath);
-        $zip->close();
+            $zip->extractTo($tempDir, $filesToExtract);
+            $zip->close();
 
-        if ($sheetContent === false) {
-            throw new Exception('Gagal membaca lembar kerja Excel.');
-        }
+            // 1. Read shared strings using XMLReader streaming
+            $sharedStrings = [];
+            $sstFile = $tempDir.DIRECTORY_SEPARATOR.'xl'.DIRECTORY_SEPARATOR.'sharedStrings.xml';
+            if ($hasSharedStrings && file_exists($sstFile)) {
+                $reader = new XMLReader;
+                if ($reader->open($sstFile)) {
+                    $currentString = '';
+                    $inSi = false;
 
-        $sheetXml = simplexml_load_string($sheetContent);
-        if (! $sheetXml || ! isset($sheetXml->sheetData->row)) {
-            return [];
-        }
-
-        $rows = [];
-        foreach ($sheetXml->sheetData->row as $row) {
-            $rowCells = [];
-            foreach ($row->c as $c) {
-                $cellRef = (string) $c['r'];
-                $colIndex = $this->cellRefToColumnIndex($cellRef);
-
-                $type = (string) $c['t'];
-                $val = '';
-
-                if ($type === 's') {
-                    $idx = (int) $c->v;
-                    $val = $sharedStrings[$idx] ?? '';
-                } elseif ($type === 'inlineStr' && isset($c->is->t)) {
-                    $val = (string) $c->is->t;
-                } elseif (isset($c->v)) {
-                    $val = (string) $c->v;
+                    while ($reader->read()) {
+                        if ($reader->nodeType === XMLReader::ELEMENT) {
+                            if ($reader->localName === 'si') {
+                                $currentString = '';
+                                $inSi = true;
+                            } elseif ($inSi && $reader->localName === 't') {
+                                $currentString .= $reader->readString();
+                            }
+                        } elseif ($reader->nodeType === XMLReader::END_ELEMENT && $reader->localName === 'si') {
+                            $sharedStrings[] = $currentString;
+                            $inSi = false;
+                        }
+                    }
+                    $reader->close();
                 }
-
-                $rowCells[$colIndex] = $val;
             }
 
-            if (! empty($rowCells)) {
-                $maxIndex = max(array_keys($rowCells));
-                $normalizedRow = [];
-                for ($i = 0; $i <= $maxIndex; $i++) {
-                    $normalizedRow[$i] = $rowCells[$i] ?? '';
+            // 2. Stream worksheet rows using XMLReader
+            $rows = [];
+            $sheetFile = $tempDir.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $sheetPath);
+            if (file_exists($sheetFile)) {
+                $reader = new XMLReader;
+                if ($reader->open($sheetFile)) {
+                    $currentRow = [];
+                    $currentCellCol = 0;
+                    $currentCellType = '';
+                    $inCell = false;
+
+                    while ($reader->read()) {
+                        if ($reader->nodeType === XMLReader::ELEMENT) {
+                            if ($reader->localName === 'row') {
+                                $currentRow = [];
+                            } elseif ($reader->localName === 'c') {
+                                $cellRef = (string) ($reader->getAttribute('r') ?? '');
+                                $currentCellCol = $cellRef !== '' ? $this->cellRefToColumnIndex($cellRef) : 0;
+                                $currentCellType = (string) ($reader->getAttribute('t') ?? '');
+                                $inCell = true;
+                            } elseif ($inCell && ($reader->localName === 'v' || $reader->localName === 't')) {
+                                $val = $reader->readString();
+                                if ($currentCellType === 's') {
+                                    $val = $sharedStrings[(int) $val] ?? '';
+                                }
+                                $currentRow[$currentCellCol] = $val;
+                            }
+                        } elseif ($reader->nodeType === XMLReader::END_ELEMENT) {
+                            if ($reader->localName === 'c') {
+                                $inCell = false;
+                            } elseif ($reader->localName === 'row') {
+                                if (! empty($currentRow)) {
+                                    $maxIndex = max(array_keys($currentRow));
+                                    $normalizedRow = [];
+                                    for ($i = 0; $i <= $maxIndex; $i++) {
+                                        $normalizedRow[$i] = $currentRow[$i] ?? '';
+                                    }
+                                    $rows[] = $normalizedRow;
+                                }
+                            }
+                        }
+                    }
+                    $reader->close();
                 }
-                $rows[] = $normalizedRow;
+            }
+
+            return $rows;
+        } finally {
+            $this->deleteDirectory($tempDir);
+        }
+    }
+
+    /**
+     * Delete directory and its contents recursively.
+     */
+    protected function deleteDirectory(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+
+        $items = scandir($dir);
+        if ($items === false) {
+            return;
+        }
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+
+            $path = $dir.DIRECTORY_SEPARATOR.$item;
+            if (is_dir($path)) {
+                $this->deleteDirectory($path);
+            } else {
+                @unlink($path);
             }
         }
 
-        return $rows;
+        @rmdir($dir);
     }
 
     /**
@@ -568,7 +774,7 @@ class ReviewExcelService
                 str_contains($clean, 'link review') ||
                 str_contains($clean, 'url review') ||
                 str_contains($clean, 'link') ||
-                str_contains($clean, 'url')
+                $clean === 'url'
             )) {
                 $indices['google_review_url'] = $index;
             }
