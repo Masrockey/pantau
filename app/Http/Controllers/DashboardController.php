@@ -204,6 +204,9 @@ class DashboardController extends Controller
         $overviewSummary = null;
         $availableMonths = [];
         $activeMonth = null;
+        $monitoringFeedback = [];
+        $monitoringSummary = null;
+        $prevMonth = null;
 
         if ($isGlobal) {
             $selectedMonth = $request->string('month')->trim()->value();
@@ -232,6 +235,11 @@ class DashboardController extends Controller
             $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
             $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString();
 
+            $prevMonthCarbon = $monthCarbon->copy()->subMonth();
+            $prevMonth = $prevMonthCarbon->format('Y-m');
+            $startOfPrevMonth = $prevMonthCarbon->copy()->startOfMonth()->toDateString();
+            $endOfPrevMonth = $prevMonthCarbon->copy()->endOfMonth()->toDateString();
+
             $overviewDealersQuery = Dealer::query()
                 ->withCount('reviews');
 
@@ -244,8 +252,12 @@ class DashboardController extends Controller
             $monthlyReviewsQuery = Review::query()
                 ->whereBetween('tanggal_publish_review', [$startOfMonth, $endOfMonth]);
 
+            $prevMonthlyReviewsQuery = Review::query()
+                ->whereBetween('tanggal_publish_review', [$startOfPrevMonth, $endOfPrevMonth]);
+
             if ($dealerScopeId) {
                 $monthlyReviewsQuery->where('dealer_id', $dealerScopeId);
+                $prevMonthlyReviewsQuery->where('dealer_id', $dealerScopeId);
             }
 
             $monthlyReviews = $monthlyReviewsQuery->get([
@@ -371,7 +383,219 @@ class DashboardController extends Controller
                 'ach_feedback' => $totAchFeedback,
                 'lt_days' => $avgLt,
             ];
+
+            $prevMonthlyReviews = $prevMonthlyReviewsQuery->get(['id', 'dealer_id']);
+            $prevMonthlyByDealer = $prevMonthlyReviews->groupBy('dealer_id')->map->count();
+
+            $monitoringFeedback = $allDealers->map(function (Dealer $dealer) use ($monthlyByDealer, $prevMonthlyByDealer): array {
+                $reviews = $monthlyByDealer->get($dealer->id, collect());
+                $mCount = $reviews->count();
+                $m1Count = (int) ($prevMonthlyByDealer->get($dealer->id, 0));
+
+                $r13 = 0;
+                $r45 = 0;
+                $feedbackDone = 0;
+                $totalLtDays = 0;
+                $ltCount = 0;
+
+                foreach ($reviews as $rev) {
+                    $star = (int) round($rev->star_rate);
+                    if ($star <= 3) {
+                        $r13++;
+                    } else {
+                        $r45++;
+                    }
+
+                    if ($rev->respon_from_owner) {
+                        $feedbackDone++;
+                        if ($rev->tanggal_respon && $rev->tanggal_publish_review) {
+                            $pub = Carbon::parse($rev->tanggal_publish_review);
+                            $resp = Carbon::parse($rev->tanggal_respon);
+                            $diff = $pub->diffInDays($resp, false);
+                            $totalLtDays += max(0, $diff);
+                            $ltCount++;
+                        }
+                    }
+                }
+
+                $notYetFeedback = $mCount - $feedbackDone;
+                $achFeedback = $mCount > 0 && $feedbackDone > 0
+                    ? round(($feedbackDone / $mCount) * 100, 2)
+                    : ($mCount > 0 ? 0.0 : null);
+                $ltDays = $ltCount > 0 ? round($totalLtDays / $ltCount, 1) : null;
+
+                $growthReview = null;
+                if ($m1Count > 0) {
+                    $growthReview = (int) round((($mCount - $m1Count) / $m1Count) * 100);
+                } elseif ($m1Count === 0 && $mCount > 0) {
+                    $growthReview = 100;
+                }
+
+                return [
+                    'id' => $dealer->id,
+                    'kode_dealer' => $dealer->kode_dealer,
+                    'nama_dealer' => $dealer->nama_dealer,
+                    'gmb_score' => $dealer->star_rate !== null ? (float) $dealer->star_rate : null,
+                    'rating_1_3' => $r13,
+                    'rating_4_5' => $r45,
+                    'feedback_done' => $feedbackDone,
+                    'not_yet_feedback' => $notYetFeedback,
+                    'ach_feedback' => $achFeedback,
+                    'lt_day' => $ltDays,
+                    'jumlah_review_m' => $mCount,
+                    'jumlah_review_m1' => $m1Count,
+                    'growth_review' => $growthReview,
+                ];
+            })
+                ->sort(function ($a, $b) {
+                    $scoreA = $a['gmb_score'] ?? -1;
+                    $scoreB = $b['gmb_score'] ?? -1;
+                    if ($scoreA !== $scoreB) {
+                        return $scoreB <=> $scoreA;
+                    }
+
+                    return strcasecmp($a['nama_dealer'], $b['nama_dealer']);
+                })
+                ->values()
+                ->all();
+
+            $mfCollection = collect($monitoringFeedback);
+            $totRating13 = (int) $mfCollection->sum('rating_1_3');
+            $totRating45 = (int) $mfCollection->sum('rating_4_5');
+            $totFeedbackDone = (int) $mfCollection->sum('feedback_done');
+            $totNotYetFeedback = (int) $mfCollection->sum('not_yet_feedback');
+            $totM = (int) $mfCollection->sum('jumlah_review_m');
+            $totM1 = (int) $mfCollection->sum('jumlah_review_m1');
+            $totAch = $totM > 0 ? round(($totFeedbackDone / $totM) * 100, 2) : 0.0;
+
+            $totGrowth = null;
+            if ($totM1 > 0) {
+                $totGrowth = (int) round((($totM - $totM1) / $totM1) * 100);
+            } elseif ($totM1 === 0 && $totM > 0) {
+                $totGrowth = 100;
+            }
+
+            $validScores = $mfCollection->pluck('gmb_score')->filter(fn ($s) => $s !== null);
+            $avgGmbScore = $validScores->count() > 0 ? round((float) $validScores->avg(), 2) : null;
+            $validLts = $mfCollection->pluck('lt_day')->filter(fn ($l) => $l !== null);
+            $avgLt = $validLts->count() > 0 ? round((float) $validLts->avg(), 1) : null;
+
+            $monitoringSummary = [
+                'gmb_score' => $avgGmbScore,
+                'rating_1_3' => $totRating13,
+                'rating_4_5' => $totRating45,
+                'feedback_done' => $totFeedbackDone,
+                'not_yet_feedback' => $totNotYetFeedback,
+                'ach_feedback' => $totAch,
+                'lt_day' => $avgLt,
+                'jumlah_review_m' => $totM,
+                'jumlah_review_m1' => $totM1,
+                'growth_review' => $totGrowth,
+            ];
         }
+
+        // Word Cloud Analysis
+        $wordReviewsQuery = (clone $reviewQuery)
+            ->whereNotNull('review')
+            ->where('review', '!=', '');
+
+        $allTimeReviews = (clone $wordReviewsQuery)->pluck('review');
+        $wordCloudAllTime = $this->extractWordCloud($allTimeReviews, 140);
+
+        $wordCloudData = $wordCloudAllTime;
+        if ($isGlobal && $activeMonth) {
+            $monthCarbon = Carbon::parse($activeMonth.'-01');
+            $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
+            $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString();
+
+            $monthlyReviews = (clone $wordReviewsQuery)
+                ->whereBetween('tanggal_publish_review', [$startOfMonth, $endOfMonth])
+                ->pluck('review');
+
+            $monthlyWords = $this->extractWordCloud($monthlyReviews, 140);
+            if (! empty($monthlyWords)) {
+                $wordCloudData = $monthlyWords;
+            }
+        }
+
+        // GMB Cluster Quadrant Analysis
+        $clusterDealersQuery = Dealer::query()
+            ->orderByDesc('total_review');
+
+        if ($dealerScopeId) {
+            $clusterDealersQuery->where('id', $dealerScopeId);
+        }
+
+        $clusterDealers = $clusterDealersQuery->get(['id', 'kode_dealer', 'nama_dealer', 'star_rate', 'total_review']);
+
+        $gmbClusterDealers = [];
+        $zoneCounts = [
+            'IMPROVEMENT ZONE' => 0,
+            'VOLUME ZONE' => 0,
+            'EXCELLENT ZONE' => 0,
+            'QUALITY ZONE' => 0,
+        ];
+
+        $totalScoreSum = 0;
+        $totalReviewSum = 0;
+        $validScoreCount = 0;
+
+        foreach ($clusterDealers as $d) {
+            $starRate = $d->star_rate !== null ? (float) $d->star_rate : 0.0;
+            $totalRev = (int) ($d->total_review ?? 0);
+
+            if ($starRate >= 4.7 && $totalRev >= 1000) {
+                $zone = 'EXCELLENT ZONE';
+            } elseif ($starRate >= 4.7 && $totalRev < 1000) {
+                $zone = 'VOLUME ZONE';
+            } elseif ($starRate < 4.7 && $totalRev >= 1000) {
+                $zone = 'QUALITY ZONE';
+            } else {
+                $zone = 'IMPROVEMENT ZONE';
+            }
+
+            $zoneCounts[$zone]++;
+            if ($d->star_rate !== null) {
+                $totalScoreSum += $starRate;
+                $validScoreCount++;
+            }
+            $totalReviewSum += $totalRev;
+
+            $gmbClusterDealers[] = [
+                'id' => $d->id,
+                'kode_dealer' => $d->kode_dealer,
+                'nama_dealer' => $d->nama_dealer,
+                'region' => 'NTB',
+                'gmb_score' => $d->star_rate !== null ? (float) $d->star_rate : null,
+                'total_review' => $totalRev,
+                'cluster_zone' => $zone,
+            ];
+        }
+
+        $dealerTotalCount = count($gmbClusterDealers);
+        $gmbClusterSummary = [
+            'total_dealers' => $dealerTotalCount,
+            'avg_gmb_score' => $validScoreCount > 0 ? round($totalScoreSum / $validScoreCount, 2) : 0,
+            'total_review_sum' => $totalReviewSum,
+            'zones' => [
+                'IMPROVEMENT ZONE' => [
+                    'count' => $zoneCounts['IMPROVEMENT ZONE'],
+                    'percentage' => $dealerTotalCount > 0 ? round(($zoneCounts['IMPROVEMENT ZONE'] / $dealerTotalCount) * 100, 2) : 0,
+                ],
+                'VOLUME ZONE' => [
+                    'count' => $zoneCounts['VOLUME ZONE'],
+                    'percentage' => $dealerTotalCount > 0 ? round(($zoneCounts['VOLUME ZONE'] / $dealerTotalCount) * 100, 2) : 0,
+                ],
+                'EXCELLENT ZONE' => [
+                    'count' => $zoneCounts['EXCELLENT ZONE'],
+                    'percentage' => $dealerTotalCount > 0 ? round(($zoneCounts['EXCELLENT ZONE'] / $dealerTotalCount) * 100, 2) : 0,
+                ],
+                'QUALITY ZONE' => [
+                    'count' => $zoneCounts['QUALITY ZONE'],
+                    'percentage' => $dealerTotalCount > 0 ? round(($zoneCounts['QUALITY ZONE'] / $dealerTotalCount) * 100, 2) : 0,
+                ],
+            ],
+        ];
 
         return Inertia::render('dashboard', [
             'metrics' => [
@@ -396,11 +620,78 @@ class DashboardController extends Controller
             'mapDealers' => $mapDealers,
             'dealerOverview' => $dealerOverview,
             'overviewSummary' => $overviewSummary,
+            'monitoringFeedback' => $monitoringFeedback,
+            'monitoringSummary' => $monitoringSummary,
+            'wordCloudData' => $wordCloudData,
+            'wordCloudAllTime' => $wordCloudAllTime,
+            'gmbClusterDealers' => $gmbClusterDealers,
+            'gmbClusterSummary' => $gmbClusterSummary,
             'availableMonths' => $availableMonths,
             'activeMonth' => $activeMonth,
+            'prevMonth' => $prevMonth,
             'selectedDealerId' => $dealerScopeId ? (string) $dealerScopeId : '',
             'isGlobal' => $isGlobal,
             'userRole' => $user?->role?->value ?? (string) ($user?->role ?? ''),
         ]);
+    }
+
+    /**
+     * Extract word frequency tokens from a list of review texts.
+     *
+     * @param  iterable<int, mixed>  $reviews
+     * @return array<int, array{text: string, value: int}>
+     */
+    protected function extractWordCloud(iterable $reviews, int $limit = 140): array
+    {
+        $wordCounts = [];
+
+        foreach ($reviews as $text) {
+            if (! is_string($text) || trim($text) === '') {
+                continue;
+            }
+
+            // Replace linebreaks and non-alphanumeric/hyphen characters with spaces
+            $cleaned = preg_replace('/[^\p{L}\p{N}\-]/u', ' ', $text) ?? '';
+            $tokens = preg_split('/\s+/u', $cleaned, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+            foreach ($tokens as $token) {
+                // Trim trailing hyphens if any
+                $trimmed = trim($token, '-');
+                if ($trimmed === '' || mb_strlen($trimmed) < 1) {
+                    continue;
+                }
+
+                $lower = mb_strtolower($trimmed);
+                if (! isset($wordCounts[$lower])) {
+                    $wordCounts[$lower] = [
+                        'count' => 0,
+                        'forms' => [],
+                    ];
+                }
+
+                $wordCounts[$lower]['count']++;
+                $wordCounts[$lower]['forms'][$trimmed] = ($wordCounts[$lower]['forms'][$trimmed] ?? 0) + 1;
+            }
+        }
+
+        if (empty($wordCounts)) {
+            return [];
+        }
+
+        uasort($wordCounts, fn ($a, $b) => $b['count'] <=> $a['count']);
+
+        $result = [];
+        $topSlice = array_slice($wordCounts, 0, $limit, true);
+
+        foreach ($topSlice as $lower => $data) {
+            arsort($data['forms']);
+            $preferredForm = (string) array_key_first($data['forms']);
+            $result[] = [
+                'text' => $preferredForm,
+                'value' => (int) $data['count'],
+            ];
+        }
+
+        return $result;
     }
 }

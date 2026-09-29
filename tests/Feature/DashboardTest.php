@@ -182,6 +182,18 @@ test('super admin and main dealer receive dealer overview matrix with monthly re
             ->has('overviewSummary')
             ->where('overviewSummary.review_monthly', 2)
             ->where('overviewSummary.jumlah_feedback', 1)
+            ->has('monitoringFeedback', 1)
+            ->where('monitoringFeedback.0.nama_dealer', 'NSS SUMBAWA')
+            ->where('monitoringFeedback.0.gmb_score', fn ($val) => (float) $val === 5.0)
+            ->where('monitoringFeedback.0.rating_1_3', 1)
+            ->where('monitoringFeedback.0.rating_4_5', 1)
+            ->where('monitoringFeedback.0.feedback_done', 1)
+            ->where('monitoringFeedback.0.not_yet_feedback', 1)
+            ->where('monitoringFeedback.0.ach_feedback', fn ($val) => (float) $val === 50.0)
+            ->where('monitoringFeedback.0.jumlah_review_m', 2)
+            ->has('monitoringSummary')
+            ->where('monitoringSummary.jumlah_review_m', 2)
+            ->where('monitoringSummary.feedback_done', 1)
         );
 });
 
@@ -199,5 +211,130 @@ test('dealer user does not receive dealer overview matrix', function () {
             ->where('isGlobal', false)
             ->where('dealerOverview', [])
             ->where('overviewSummary', null)
+            ->where('monitoringFeedback', [])
+            ->where('monitoringSummary', null)
+        );
+});
+
+test('dashboard returns word cloud frequency data extracted from reviews', function () {
+    $superAdmin = User::factory()->superAdmin()->create();
+    $dealer = Dealer::factory()->create();
+
+    Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'tanggal_publish_review' => now()->toDateString(),
+        'review' => 'Pelayanan ramah dan cepat, motor Honda sangat bagus',
+    ]);
+    Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'tanggal_publish_review' => now()->toDateString(),
+        'review' => 'Beli motor Honda disini sangat puas, pelayanan ramah',
+    ]);
+
+    $response = $this->actingAs($superAdmin)->get(route('dashboard'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->has('wordCloudData')
+            ->has('wordCloudAllTime')
+            ->where('wordCloudData', fn ($words) => collect($words)->pluck('text')->contains('motor')
+                && collect($words)->pluck('text')->contains('Pelayanan')
+                && collect($words)->firstWhere('text', 'motor')['value'] === 2
+            )
+        );
+});
+
+test('dealer user word cloud only contains words from their own reviews', function () {
+    $dealerA = Dealer::factory()->create(['nama_dealer' => 'Dealer A']);
+    $dealerB = Dealer::factory()->create(['nama_dealer' => 'Dealer B']);
+
+    $dealerUser = User::factory()->dealer()->create([
+        'dealer_id' => $dealerA->id,
+    ]);
+
+    Review::factory()->create([
+        'dealer_id' => $dealerA->id,
+        'review' => 'Pelayanan sangat ramah di dealer A',
+    ]);
+    Review::factory()->create([
+        'dealer_id' => $dealerB->id,
+        'review' => 'Keluhan rusak parah di dealer B',
+    ]);
+
+    $response = $this->actingAs($dealerUser)->get(route('dashboard'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->where('wordCloudData', fn ($words) => collect($words)->pluck('text')->contains('Pelayanan')
+                && ! collect($words)->pluck('text')->contains('Keluhan')
+            )
+        );
+});
+
+test('dashboard provides gmbClusterDealers and gmbClusterSummary with accurate 4-quadrant classification', function () {
+    $superAdmin = User::factory()->superAdmin()->create();
+
+    // 1. Excellent: star_rate >= 4.7, total_review >= 1000
+    $d1 = Dealer::factory()->create([
+        'nama_dealer' => 'Astra Motor Ampenan',
+        'star_rate' => 4.9,
+        'total_review' => 2800,
+    ]);
+    // 2. Volume: star_rate >= 4.7, total_review < 1000
+    $d2 = Dealer::factory()->create([
+        'nama_dealer' => 'Bina Motor',
+        'star_rate' => 4.8,
+        'total_review' => 500,
+    ]);
+    // 3. Quality: star_rate < 4.7, total_review >= 1000
+    $d3 = Dealer::factory()->create([
+        'nama_dealer' => 'Krida Mataram',
+        'star_rate' => 4.6,
+        'total_review' => 1200,
+    ]);
+    // 4. Improvement: star_rate < 4.7, total_review < 1000
+    $d4 = Dealer::factory()->create([
+        'nama_dealer' => 'Arbi Motor',
+        'star_rate' => 4.4,
+        'total_review' => 150,
+    ]);
+
+    $response = $this->actingAs($superAdmin)->get(route('dashboard'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->has('gmbClusterDealers')
+            ->has('gmbClusterSummary')
+            ->where('gmbClusterSummary.zones.EXCELLENT ZONE.count', fn ($val) => $val >= 1)
+            ->where('gmbClusterSummary.zones.VOLUME ZONE.count', fn ($val) => $val >= 1)
+            ->where('gmbClusterSummary.zones.QUALITY ZONE.count', fn ($val) => $val >= 1)
+            ->where('gmbClusterSummary.zones.IMPROVEMENT ZONE.count', fn ($val) => $val >= 1)
+            ->where('gmbClusterDealers', fn ($dealers) => collect($dealers)->firstWhere('id', $d1->id)['cluster_zone'] === 'EXCELLENT ZONE'
+                && collect($dealers)->firstWhere('id', $d2->id)['cluster_zone'] === 'VOLUME ZONE'
+                && collect($dealers)->firstWhere('id', $d3->id)['cluster_zone'] === 'QUALITY ZONE'
+                && collect($dealers)->firstWhere('id', $d4->id)['cluster_zone'] === 'IMPROVEMENT ZONE'
+            )
+        );
+});
+
+test('dealer user only receives their own dealer in gmbClusterDealers', function () {
+    $dealerA = Dealer::factory()->create(['nama_dealer' => 'Dealer A', 'star_rate' => 4.9, 'total_review' => 1500]);
+    $dealerB = Dealer::factory()->create(['nama_dealer' => 'Dealer B', 'star_rate' => 4.2, 'total_review' => 100]);
+
+    $dealerUser = User::factory()->dealer()->create([
+        'dealer_id' => $dealerA->id,
+    ]);
+
+    $response = $this->actingAs($dealerUser)->get(route('dashboard'));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->has('gmbClusterDealers', 1)
+            ->where('gmbClusterDealers.0.id', $dealerA->id)
+            ->where('gmbClusterDealers.0.cluster_zone', 'EXCELLENT ZONE')
         );
 });

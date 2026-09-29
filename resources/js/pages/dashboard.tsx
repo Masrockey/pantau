@@ -26,6 +26,20 @@ import {
     DealerOverviewItem,
     DealerOverviewSummary,
 } from '@/components/dashboard/dealer-overview';
+import {
+    GmbCluster,
+    GmbClusterDealerItem,
+    GmbClusterSummary,
+} from '@/components/dashboard/gmb-cluster';
+import {
+    MonitoringFeedback,
+    MonitoringFeedbackItem,
+    MonitoringFeedbackSummary,
+} from '@/components/dashboard/monitoring-feedback';
+import {
+    ReviewWordCloud,
+    WordCloudItem,
+} from '@/components/dashboard/review-word-cloud';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -94,8 +108,15 @@ interface DashboardProps {
     mapDealers?: MapDealer[];
     dealerOverview?: DealerOverviewItem[];
     overviewSummary?: DealerOverviewSummary | null;
+    monitoringFeedback?: MonitoringFeedbackItem[];
+    monitoringSummary?: MonitoringFeedbackSummary | null;
+    wordCloudData?: WordCloudItem[];
+    wordCloudAllTime?: WordCloudItem[];
+    gmbClusterDealers?: GmbClusterDealerItem[];
+    gmbClusterSummary?: GmbClusterSummary | null;
     availableMonths?: string[];
     activeMonth?: string | null;
+    prevMonth?: string | null;
     selectedDealerId: string;
     isGlobal: boolean;
     userRole: string;
@@ -116,8 +137,15 @@ export default function Dashboard({
     mapDealers = [],
     dealerOverview = [],
     overviewSummary = null,
+    monitoringFeedback = [],
+    monitoringSummary = null,
+    wordCloudData = [],
+    wordCloudAllTime = [],
+    gmbClusterDealers = [],
+    gmbClusterSummary = null,
     availableMonths = [],
     activeMonth = null,
+    prevMonth = null,
     selectedDealerId,
     isGlobal,
     userRole,
@@ -483,6 +511,18 @@ export default function Dashboard({
                     </Card>
                 </div>
 
+                {/* Monitoring Feedback Section (For Super Admin and Main Dealer) */}
+                {isGlobal && monitoringFeedback.length > 0 && (
+                    <MonitoringFeedback
+                        dealers={monitoringFeedback}
+                        summary={monitoringSummary}
+                        availableMonths={availableMonths}
+                        activeMonth={activeMonth}
+                        prevMonth={prevMonth}
+                        selectedDealerId={selectedDealerId}
+                    />
+                )}
+
                 {/* Dealer Overview Matrix & Chart Section (For Super Admin and Main Dealer) */}
                 {isGlobal && dealerOverview.length > 0 && (
                     <DealerOverview
@@ -491,6 +531,23 @@ export default function Dashboard({
                         availableMonths={availableMonths}
                         activeMonth={activeMonth}
                         selectedDealerId={selectedDealerId}
+                    />
+                )}
+
+                {/* GMB Cluster Quadrant Matrix & Distribution Section */}
+                {gmbClusterDealers.length > 0 && (
+                    <GmbCluster
+                        dealers={gmbClusterDealers}
+                        summary={gmbClusterSummary}
+                    />
+                )}
+
+                {/* Review Text Word Cloud Visualization */}
+                {(wordCloudData.length > 0 || wordCloudAllTime.length > 0) && (
+                    <ReviewWordCloud
+                        words={wordCloudData}
+                        allTimeWords={wordCloudAllTime}
+                        activeMonth={activeMonth}
                     />
                 )}
 

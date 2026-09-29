@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DealerController;
+use App\Http\Controllers\RatingSimulationController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -10,6 +11,7 @@ Route::redirect('/', 'login')->name('home');
 
 Route::middleware(['auth'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('rating-simulasi', [RatingSimulationController::class, 'index'])->name('rating-simulasi.index');
 
     Route::get('dealers/template', [DealerController::class, 'template'])->name('dealers.template');
     Route::post('dealers/import', [DealerController::class, 'import'])->name('dealers.import');
