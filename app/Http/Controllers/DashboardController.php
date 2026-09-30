@@ -241,12 +241,12 @@ class DashboardController extends Controller
 
                 $monthCarbon = Carbon::parse($activeMonth.'-01');
                 $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
-                $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString();
+                $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString().' 23:59:59';
 
                 $prevMonthCarbon = $monthCarbon->copy()->subMonth();
                 $prevMonth = $prevMonthCarbon->format('Y-m');
                 $startOfPrevMonth = $prevMonthCarbon->copy()->startOfMonth()->toDateString();
-                $endOfPrevMonth = $prevMonthCarbon->copy()->endOfMonth()->toDateString();
+                $endOfPrevMonth = $prevMonthCarbon->copy()->endOfMonth()->toDateString().' 23:59:59';
 
                 $monthlyReviewsQuery = Review::query()
                     ->whereBetween('tanggal_publish_review', [$startOfMonth, $endOfMonth]);
@@ -523,7 +523,7 @@ class DashboardController extends Controller
         if ($isGlobal && $activeMonth && $activeMonth !== 'all') {
             $monthCarbon = Carbon::parse($activeMonth.'-01');
             $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
-            $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString();
+            $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString().' 23:59:59';
 
             $monthlyReviews = (clone $wordReviewsQuery)
                 ->whereBetween('tanggal_publish_review', [$startOfMonth, $endOfMonth])

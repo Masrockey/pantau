@@ -50,7 +50,7 @@ class DealerOverviewController extends Controller
 
             $monthCarbon = Carbon::parse($activeMonth.'-01');
             $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
-            $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString();
+            $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString().' 23:59:59';
 
             $monthlyReviewsQuery = Review::query()
                 ->whereBetween('tanggal_publish_review', [$startOfMonth, $endOfMonth]);

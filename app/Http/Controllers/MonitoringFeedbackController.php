@@ -72,10 +72,10 @@ class MonitoringFeedbackController extends Controller
                 $prevMonth = substr($prevStartDate, 0, 7);
 
                 $monthlyReviewsQuery = Review::query()
-                    ->whereBetween('tanggal_publish_review', [$startDate, $endDate]);
+                    ->whereBetween('tanggal_publish_review', [$startDate, $endDate.' 23:59:59']);
 
                 $prevMonthlyReviewsQuery = Review::query()
-                    ->whereBetween('tanggal_publish_review', [$prevStartDate, $prevEndDate]);
+                    ->whereBetween('tanggal_publish_review', [$prevStartDate, $prevEndDate.' 23:59:59']);
             } catch (\Throwable) {
                 // If parsing fails, fall back to month view
                 $startDateParam = '';
@@ -100,10 +100,10 @@ class MonitoringFeedbackController extends Controller
             $activeRangeLabel = $monthCarbon->translatedFormat('F Y');
 
             $monthlyReviewsQuery = Review::query()
-                ->whereBetween('tanggal_publish_review', [$startDate, $endDate]);
+                ->whereBetween('tanggal_publish_review', [$startDate, $endDate.' 23:59:59']);
 
             $prevMonthlyReviewsQuery = Review::query()
-                ->whereBetween('tanggal_publish_review', [$prevStartDate, $prevEndDate]);
+                ->whereBetween('tanggal_publish_review', [$prevStartDate, $prevEndDate.' 23:59:59']);
         }
 
         $overviewDealersQuery = Dealer::query()

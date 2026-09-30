@@ -2,11 +2,15 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
     Building2,
+    Check,
+    ChevronDown,
     ExternalLink,
+    Layers,
     MapPin,
     Maximize2,
     MessageSquare,
     Minimize2,
+    Palette,
     Phone,
     RotateCcw,
     Search,
@@ -15,6 +19,13 @@ import {
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import reviewsRoute from '@/routes/reviews';
 
 export interface DealerStarRecap {
@@ -51,37 +62,271 @@ export interface MapDealer {
     recap: DealerStarRecap;
 }
 
-interface DealerMapProps {
+export interface DealerMapProps {
     dealers: MapDealer[];
     selectedDealerId?: string;
     onSelectDealer?: (dealerId: string) => void;
     className?: string;
 }
 
-// Custom DivIcon generator using public/pinpoint-icon.png with star rating
-function createDealerPinIcon(dealer: MapDealer, isSelected: boolean) {
+export type MapTileStyle = 'streets' | 'dataviz' | 'hybrid' | 'dark' | 'basic' | 'outdoor';
+export type MapPinStyle = 'capsule' | 'teardrop' | 'badge';
+
+export const MAPTILER_ATTRIBUTION =
+    '&copy; <a href="https://www.maptiler.com/copyright/" target="_blank" rel="noreferrer">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>';
+
+export const MAP_STYLES: Record<
+    MapTileStyle,
+    {
+        name: string;
+        icon: string;
+        description: string;
+        mapId: string;
+        format: 'png' | 'jpg';
+        maxZoom: number;
+    }
+> = {
+    streets: {
+        name: 'MapTiler Streets (Modern)',
+        icon: '🗺️',
+        description: 'Peta modern jernih & bersih ala Google Maps',
+        mapId: 'streets-v2',
+        format: 'png',
+        maxZoom: 20,
+    },
+    dataviz: {
+        name: 'MapTiler DataViz (Terang)',
+        icon: '⚪',
+        description: 'Gaya monokrom terang minimalis untuk dashboard analitik',
+        mapId: 'dataviz-light',
+        format: 'png',
+        maxZoom: 20,
+    },
+    hybrid: {
+        name: 'MapTiler Hybrid (Satelit)',
+        icon: '🛰️',
+        description: 'Citra foto satelit resolusi tinggi dengan label jalan',
+        mapId: 'hybrid',
+        format: 'jpg',
+        maxZoom: 20,
+    },
+    dark: {
+        name: 'MapTiler DataViz (Dark Mode)',
+        icon: '🌙',
+        description: 'Tema gelap kontras tinggi untuk dashboard malam hari',
+        mapId: 'dataviz-dark',
+        format: 'png',
+        maxZoom: 20,
+    },
+    basic: {
+        name: 'MapTiler Basic',
+        icon: '📍',
+        description: 'Peta esensial bersih dengan kontur minimal',
+        mapId: 'basic-v2',
+        format: 'png',
+        maxZoom: 20,
+    },
+    outdoor: {
+        name: 'MapTiler Outdoor',
+        icon: '🏔️',
+        description: 'Peta kontur topografi dan alam terbuka',
+        mapId: 'outdoor-v2',
+        format: 'png',
+        maxZoom: 20,
+    },
+};
+
+// 1. Kapsul Modern (Default) - Sleek pill with Honda Wing + Star Rating
+function createCapsulePin(dealer: MapDealer, isSelected: boolean) {
     const rating = dealer.star_rate !== null && dealer.star_rate !== undefined
         ? dealer.star_rate.toFixed(1)
         : '-';
 
+    const isHigh = (dealer.star_rate ?? 0) >= 4.8;
+    const accentColor = isSelected ? '#2563eb' : isHigh ? '#dc2626' : '#ea580c';
+
     return L.divIcon({
         className: 'dealer-marker-div-icon',
         html: `
-            <div class="dealer-pin-node cursor-pointer" style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.35)); transition: transform 0.2s ease;">
-                <div style="position: relative; background: #ffffff; border-radius: 6px; border: 2px solid ${isSelected ? '#2563eb' : '#dc2626'}; overflow: hidden; padding: 1.5px; box-shadow: ${isSelected ? '0 0 0 3px rgba(37,99,235,0.45)' : 'none'};">
-                    <img src="/pinpoint-icon.png" alt="${dealer.nama_dealer}" style="width: 50px; height: 25px; object-fit: contain; display: block;" />
-                    <div style="position: absolute; bottom: 1px; right: 2px; background: rgba(0,0,0,0.85); color: #fbbf24; font-size: 8.5px; font-weight: 700; padding: 0.5px 3px; border-radius: 3px; display: flex; align-items: center; gap: 1px; font-family: monospace; line-height: 1;">
-                        <span style="color: #fbbf24;">★</span><span>${rating}</span>
+            <div class="dealer-pin-node cursor-pointer" style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.28)); transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);">
+                <div style="
+                    display: inline-flex;
+                    align-items: center;
+                    background: #ffffff;
+                    border-radius: 9999px;
+                    padding: 2.5px 7px 2.5px 4px;
+                    border: 2px solid ${accentColor};
+                    box-shadow: ${isSelected ? '0 0 0 3.5px rgba(37,99,235,0.45)' : 'none'};
+                    gap: 5px;
+                    white-space: nowrap;
+                ">
+                    <!-- Honda Logo Cropped to Wing -->
+                    <div style="width: 22px; height: 16px; overflow: hidden; display: flex; align-items: flex-start; justify-content: center; flex-shrink: 0;">
+                        <img src="/pinpoint-icon.png" alt="Honda" style="width: 26px; height: 26px; object-fit: contain; object-position: top center; display: block;" />
+                    </div>
+                    <!-- Rating Badge -->
+                    <div style="display: flex; align-items: center; gap: 2px; font-weight: 700; font-size: 11px; color: #0f172a; font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1;">
+                        <span style="color: #eab308; font-size: 10px;">★</span>
+                        <span>${rating}</span>
                     </div>
                 </div>
-                <div style="width: 8px; height: 8px; transform: rotate(45deg); margin-top: -4px; background: ${isSelected ? '#2563eb' : '#dc2626'}; border-right: 1.5px solid #ffffff; border-bottom: 1.5px solid #ffffff;"></div>
+                <!-- Needle Triangle -->
+                <div style="
+                    width: 0;
+                    height: 0;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 6px solid ${accentColor};
+                    margin-top: -1px;
+                "></div>
             </div>
         `,
-        iconSize: [54, 35],
-        iconAnchor: [27, 34],
-        popupAnchor: [0, 0],
-        tooltipAnchor: [0, -17],
+        iconSize: [62, 30],
+        iconAnchor: [31, 30],
+        popupAnchor: [0, -5],
+        tooltipAnchor: [0, -15],
     });
+}
+
+// 2. Teardrop Pin - Google Maps style pin
+function createTeardropPin(dealer: MapDealer, isSelected: boolean) {
+    const rating = dealer.star_rate !== null && dealer.star_rate !== undefined
+        ? dealer.star_rate.toFixed(1)
+        : '-';
+
+    const isHigh = (dealer.star_rate ?? 0) >= 4.8;
+    const pinColor = isSelected ? '#2563eb' : isHigh ? '#dc2626' : '#ea580c';
+
+    return L.divIcon({
+        className: 'dealer-marker-div-icon',
+        html: `
+            <div class="dealer-pin-node cursor-pointer" style="position: relative; width: 34px; height: 44px; display: flex; justify-content: center; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.35)); transition: transform 0.2s ease;">
+                <div style="
+                    position: absolute;
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 50% 50% 50% 0;
+                    transform: rotate(-45deg);
+                    background: ${pinColor};
+                    border: 2px solid #ffffff;
+                    top: 0;
+                    left: 1px;
+                    box-shadow: ${isSelected ? '0 0 0 3px rgba(37,99,235,0.45)' : 'none'};
+                "></div>
+                <div style="
+                    position: absolute;
+                    width: 20px;
+                    height: 20px;
+                    background: #ffffff;
+                    border-radius: 50%;
+                    top: 6px;
+                    left: 7px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    overflow: hidden;
+                ">
+                    <img src="/pinpoint-icon.png" alt="Honda" style="width: 22px; height: 22px; object-fit: contain; object-position: top center;" />
+                </div>
+                <div style="
+                    position: absolute;
+                    top: -5px;
+                    right: -14px;
+                    background: #0f172a;
+                    color: #ffffff;
+                    font-size: 9px;
+                    font-weight: 700;
+                    padding: 1px 4px;
+                    border-radius: 9999px;
+                    border: 1px solid rgba(255,255,255,0.4);
+                    display: flex;
+                    align-items: center;
+                    gap: 1.5px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.25);
+                    line-height: 1;
+                    white-space: nowrap;
+                ">
+                    <span style="color: #fbbf24; font-size: 8px;">★</span>
+                    <span>${rating}</span>
+                </div>
+            </div>
+        `,
+        iconSize: [34, 44],
+        iconAnchor: [17, 44],
+        popupAnchor: [0, -10],
+        tooltipAnchor: [0, -22],
+    });
+}
+
+// 3. Clean Badge Pin - Neat rectangular badge with no text cut-off
+function createBadgePin(dealer: MapDealer, isSelected: boolean) {
+    const rating = dealer.star_rate !== null && dealer.star_rate !== undefined
+        ? dealer.star_rate.toFixed(1)
+        : '-';
+
+    const isHigh = (dealer.star_rate ?? 0) >= 4.8;
+    const borderColor = isSelected ? '#2563eb' : isHigh ? '#dc2626' : '#ea580c';
+
+    return L.divIcon({
+        className: 'dealer-marker-div-icon',
+        html: `
+            <div class="dealer-pin-node cursor-pointer" style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.3)); transition: transform 0.2s ease;">
+                <div style="
+                    background: #ffffff;
+                    border-radius: 7px;
+                    border: 2px solid ${borderColor};
+                    padding: 3px 6px;
+                    box-shadow: ${isSelected ? '0 0 0 3px rgba(37,99,235,0.45)' : 'none'};
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    min-width: 48px;
+                ">
+                    <div style="width: 32px; height: 16px; overflow: hidden; display: flex; align-items: flex-start; justify-content: center;">
+                        <img src="/pinpoint-icon.png" alt="Honda" style="width: 32px; height: 32px; object-fit: contain; object-position: top center;" />
+                    </div>
+                    <div style="
+                        margin-top: 2px;
+                        background: ${isHigh ? '#059669' : '#d97706'};
+                        color: #ffffff;
+                        font-size: 9px;
+                        font-weight: 700;
+                        padding: 1px 5px;
+                        border-radius: 4px;
+                        display: flex;
+                        align-items: center;
+                        gap: 2px;
+                        line-height: 1;
+                    ">
+                        <span>★</span><span>${rating}</span>
+                    </div>
+                </div>
+                <div style="
+                    width: 0;
+                    height: 0;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 6px solid ${borderColor};
+                    margin-top: -1px;
+                "></div>
+            </div>
+        `,
+        iconSize: [52, 44],
+        iconAnchor: [26, 43],
+        popupAnchor: [0, -5],
+        tooltipAnchor: [0, -20],
+    });
+}
+
+// Master DivIcon generator supporting chosen pin style
+function createDealerPinIcon(dealer: MapDealer, isSelected: boolean, pinStyle: MapPinStyle = 'capsule') {
+    if (pinStyle === 'teardrop') {
+        return createTeardropPin(dealer, isSelected);
+    }
+    if (pinStyle === 'badge') {
+        return createBadgePin(dealer, isSelected);
+    }
+    return createCapsulePin(dealer, isSelected);
 }
 
 // Generate the rich HTML card displayed on click
@@ -215,6 +460,47 @@ export default function DealerMap({
     const mapContainerRef = useRef<HTMLDivElement | null>(null);
     const mapInstanceRef = useRef<L.Map | null>(null);
     const markersLayerRef = useRef<L.LayerGroup | null>(null);
+    const tileLayerRef = useRef<L.TileLayer | null>(null);
+
+    // Map style & Pin design with local storage persistence
+    const [mapStyle, setMapStyle] = useState<MapTileStyle>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('honda_dealer_map_style') as MapTileStyle;
+            if (saved && MAP_STYLES[saved]) return saved;
+        }
+        return 'streets';
+    });
+
+    const [pinStyle, setPinStyle] = useState<MapPinStyle>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('honda_dealer_map_pin_style') as MapPinStyle;
+            if (saved && ['capsule', 'teardrop', 'badge'].includes(saved)) return saved;
+        }
+        return 'capsule';
+    });
+
+    // MapTiler API Key loaded strictly from developer environment (.env)
+    const apiKey = ((import.meta.env.VITE_MAPTILER_API_KEY as string | undefined) || '').trim();
+
+    const [showStyleModal, setShowStyleModal] = useState(false);
+
+    const handleSelectMapStyle = (style: MapTileStyle) => {
+        setMapStyle(style);
+        try {
+            localStorage.setItem('honda_dealer_map_style', style);
+        } catch {
+            // ignore storage quota errors
+        }
+    };
+
+    const handleSelectPinStyle = (style: MapPinStyle) => {
+        setPinStyle(style);
+        try {
+            localStorage.setItem('honda_dealer_map_pin_style', style);
+        } catch {
+            // ignore storage quota errors
+        }
+    };
 
     const [searchQuery, setSearchQuery] = useState('');
     const [ratingFilter, setRatingFilter] = useState<'all' | 'high' | 'attention'>('all');
@@ -245,7 +531,31 @@ export default function DealerMap({
         });
     }, [dealers, searchQuery, ratingFilter]);
 
-    // Initialize Map
+    // Helper to generate tile layer using MapTiler raster endpoint
+    const createTileLayer = (style: MapTileStyle, key: string): L.TileLayer => {
+        const cfg = MAP_STYLES[style] || MAP_STYLES.streets;
+        const cleanKey = key.trim();
+
+        if (cleanKey) {
+            return L.tileLayer(
+                `https://api.maptiler.com/maps/${cfg.mapId}/256/{z}/{x}/{y}.${cfg.format}?key=${encodeURIComponent(cleanKey)}`,
+                {
+                    maxZoom: cfg.maxZoom,
+                    attribution: MAPTILER_ATTRIBUTION,
+                    crossOrigin: true,
+                }
+            );
+        }
+
+        // Graceful fallback when key is not provided yet so user doesn't see broken 403 tiles
+        return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors',
+            subdomains: ['a', 'b', 'c'],
+        });
+    };
+
+    // Initialize Map Instance
     useEffect(() => {
         if (!mapContainerRef.current || mapInstanceRef.current) return;
 
@@ -254,17 +564,15 @@ export default function DealerMap({
             center: [-8.65, 117.3],
             zoom: 9,
             zoomControl: false,
-            attributionControl: false,
+            attributionControl: true,
         });
 
         // Add Zoom Control to top-right
         L.control.zoom({ position: 'topright' }).addTo(map);
 
-        // Add OpenStreetMap Tile Layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap contributors',
-        }).addTo(map);
+        // Add Active MapTiler Tile Layer
+        const initialTile = createTileLayer(mapStyle, apiKey).addTo(map);
+        tileLayerRef.current = initialTile;
 
         // Create marker group
         const markersLayer = L.layerGroup().addTo(map);
@@ -277,7 +585,20 @@ export default function DealerMap({
         };
     }, []);
 
-    // Update Markers when dealers or selected dealer changes
+    // Switch Tile Layer dynamically when mapStyle or apiKey changes
+    useEffect(() => {
+        const map = mapInstanceRef.current;
+        if (!map) return;
+
+        if (tileLayerRef.current) {
+            map.removeLayer(tileLayerRef.current);
+        }
+
+        const newTile = createTileLayer(mapStyle, apiKey).addTo(map);
+        tileLayerRef.current = newTile;
+    }, [mapStyle, apiKey]);
+
+    // Update Markers when dealers, selected dealer, or pinStyle changes
     useEffect(() => {
         const map = mapInstanceRef.current;
         const layer = markersLayerRef.current;
@@ -294,7 +615,7 @@ export default function DealerMap({
             }
 
             const isSelected = String(dealer.id) === String(selectedDealerId);
-            const icon = createDealerPinIcon(dealer, isSelected);
+            const icon = createDealerPinIcon(dealer, isSelected, pinStyle);
 
             const marker = L.marker([dealer.latitude, dealer.longitude], {
                 icon,
@@ -410,7 +731,7 @@ export default function DealerMap({
         return () => {
             map.off('popupclose', handlePopupClose);
         };
-    }, [filteredDealers, selectedDealerId, onSelectDealer]);
+    }, [filteredDealers, selectedDealerId, onSelectDealer, pinStyle]);
 
     // Handle Reset View
     const handleResetView = () => {
@@ -437,14 +758,14 @@ export default function DealerMap({
 
     return (
         <div
-            className={`relative flex flex-col rounded-xl border bg-card shadow-xs overflow-hidden transition-all duration-300 ${
+            className={`relative flex flex-col rounded-xl border bg-card shadow-xs transition-all duration-300 ${
                 isFullscreen
                     ? 'fixed inset-0 z-50 rounded-none border-0 h-screen w-screen p-4 bg-background/95 backdrop-blur-md'
                     : className
             }`}
         >
             {/* Header & Controls */}
-            <div className="flex flex-col gap-3 p-4 border-b bg-card/80 backdrop-blur-xs sm:flex-row sm:items-center sm:justify-between shrink-0">
+            <div className="relative z-20 flex flex-col gap-3 p-4 border-b bg-card/80 backdrop-blur-xs sm:flex-row sm:items-center sm:justify-between shrink-0">
                 <div className="flex items-center gap-2">
                     <div className="flex size-9 items-center justify-center rounded-lg bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400">
                         <MapPin className="size-4.5" />
@@ -516,6 +837,20 @@ export default function DealerMap({
                         </button>
                     </div>
 
+                    {/* Map Style & Pin Switcher Trigger */}
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowStyleModal(true)}
+                        className="h-8 px-2.5 gap-1.5 text-xs font-medium border-border/80 shadow-2xs hover:bg-accent cursor-pointer"
+                        title="Pilih Model Peta MapTiler & Bentuk Pin"
+                    >
+                        <Layers className="size-3.5 text-primary" />
+                        <span>Desain: <strong className="text-foreground">{MAP_STYLES[mapStyle]?.name?.replace('MapTiler ', '') || 'Streets'}</strong></span>
+                        <Palette className="size-3 text-muted-foreground ml-0.5" />
+                    </Button>
+
                     {/* Reset Map View */}
                     <Button
                         type="button"
@@ -548,15 +883,127 @@ export default function DealerMap({
                 </div>
             </div>
 
+
+            {/* Map Style & Configuration Dialog Modal */}
+            <Dialog open={showStyleModal} onOpenChange={setShowStyleModal}>
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto p-5 sm:p-6">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+                            <Palette className="size-5 text-primary" />
+                            Desain & Model Peta MapTiler
+                        </DialogTitle>
+                        <DialogDescription className="text-xs sm:text-sm">
+                            Pilih gaya visual peta MapTiler dan bentuk pin showroom Honda.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {/* Pilihan Model Peta MapTiler */}
+                    <div className="space-y-2 pt-1">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                Pilih Model Peta ({Object.keys(MAP_STYLES).length} Pilihan)
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                                Terpilih: <strong>{MAP_STYLES[mapStyle]?.name}</strong>
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {(Object.keys(MAP_STYLES) as MapTileStyle[]).map((key) => {
+                                const style = MAP_STYLES[key];
+                                const isActive = mapStyle === key;
+                                return (
+                                    <button
+                                        key={key}
+                                        type="button"
+                                        onClick={() => handleSelectMapStyle(key)}
+                                        className={`flex items-start justify-between rounded-xl p-3 text-left transition-all cursor-pointer ${
+                                            isActive
+                                                ? 'bg-primary/10 text-foreground border-2 border-primary shadow-xs ring-1 ring-primary/30'
+                                                : 'bg-card hover:bg-muted/60 border text-foreground'
+                                        }`}
+                                    >
+                                        <div className="flex items-start gap-2.5">
+                                            <span className="text-2xl shrink-0 mt-0.5">{style.icon}</span>
+                                            <div>
+                                                <div className="text-xs font-semibold leading-tight flex items-center gap-1.5">
+                                                    <span>{style.name}</span>
+                                                    {isActive && (
+                                                        <Badge variant="default" className="text-[9.5px] h-4 px-1.5">Aktif</Badge>
+                                                    )}
+                                                </div>
+                                                <div className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                                                    {style.description}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {isActive ? (
+                                            <div className="size-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 mt-0.5">
+                                                <Check className="size-3 stroke-[3]" />
+                                            </div>
+                                        ) : (
+                                            <div className="size-5 rounded-full border border-muted-foreground/30 shrink-0 mt-0.5" />
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Section 3: Bentuk Pin Marker Showroom */}
+                    <div className="space-y-2 pt-2 border-t">
+                        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Bentuk Pin Marker Dealer Honda
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {[
+                                { id: 'capsule', name: 'Kapsul Modern', desc: 'Ramping, rating jelas, logo sayap Honda', icon: '💊' },
+                                { id: 'teardrop', name: 'Pin Teardrop', desc: 'Pin klasik ala Google Maps', icon: '📍' },
+                                { id: 'badge', name: 'Badge Showroom', desc: 'Badge kotak showroom dengan rating', icon: '🏷️' },
+                            ].map((p) => {
+                                const isActive = pinStyle === p.id;
+                                return (
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => handleSelectPinStyle(p.id as MapPinStyle)}
+                                        className={`flex items-start justify-between rounded-xl p-3 text-left transition-all cursor-pointer ${
+                                            isActive
+                                                ? 'bg-primary/10 text-foreground border-2 border-primary shadow-xs'
+                                                : 'bg-card hover:bg-muted/60 border text-foreground'
+                                        }`}
+                                    >
+                                        <div className="flex items-start gap-2">
+                                            <span className="text-xl shrink-0 mt-0.5">{p.icon}</span>
+                                            <div>
+                                                <div className="text-xs font-semibold leading-tight">{p.name}</div>
+                                                <div className="text-[10.5px] text-muted-foreground mt-0.5 leading-tight">{p.desc}</div>
+                                            </div>
+                                        </div>
+                                        {isActive && <Check className="size-4 text-primary shrink-0 mt-0.5" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* Map Canvas with generous height */}
             <div className="relative flex-1 min-h-[520px] lg:min-h-[580px] w-full bg-muted/20">
                 <div ref={mapContainerRef} className="absolute inset-0 size-full z-0" />
 
                 {/* Legend Overlay at bottom-left */}
-                <div className="absolute bottom-3 left-3 z-10 flex items-center gap-3 rounded-lg border bg-background/90 px-3 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5">
-                        <img src="/pinpoint-icon.png" alt="Pin" className="h-3.5 w-auto object-contain" />
-                        Dealer Honda
+                <div className="absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-2.5 rounded-lg border bg-background/90 px-3 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                        <div className="size-2 rounded-full bg-rose-600 animate-pulse" />
+                        Dealer Honda ({filteredDealers.length})
+                    </span>
+                    <span className="text-muted-foreground/40">|</span>
+                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                        <span>★</span> ≥ 4.8
+                    </span>
+                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                        <span>★</span> &lt; 4.8
                     </span>
                 </div>
             </div>
