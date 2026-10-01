@@ -26,6 +26,17 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import {
+    Button as AntButton,
+    Card as AntCard,
+    Modal as AntModal,
+    Popconfirm as AntPopconfirm,
+    Progress as AntProgress,
+    Select as AntSelect,
+    Statistic as AntStatistic,
+    Switch as AntSwitch,
+    Tag as AntTag,
+} from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -854,71 +865,45 @@ export default function SyncReviewsPage({
 
                 {/* Metric Summary Cards */}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:gap-4">
-                    <Card className="py-4">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xs font-medium text-muted-foreground">
-                                Total Showroom
-                            </CardTitle>
-                            <span className="text-muted-foreground">🏢</span>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{stats.total_dealers}</div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Showroom dalam jangkauan
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <AntCard size="small" className="shadow-xs border border-border/60 hover:border-primary/40 transition-all">
+                        <AntStatistic
+                            title={<span className="text-xs text-muted-foreground font-medium">Total Showroom</span>}
+                            value={stats.total_dealers}
+                            prefix={<span className="mr-1 text-sm">🏢</span>}
+                            valueStyle={{ fontWeight: 700, fontSize: '1.5rem' }}
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">Showroom dalam jangkauan</p>
+                    </AntCard>
 
-                    <Card className="py-4">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xs font-medium text-muted-foreground">
-                                Siap Sinkronisasi
-                            </CardTitle>
-                            <CheckCircle2 className="size-4 text-emerald-500" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                                {stats.dealers_with_maps}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Link Google Maps terisi
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <AntCard size="small" className="shadow-xs border border-border/60 hover:border-emerald-500/40 transition-all">
+                        <AntStatistic
+                            title={<span className="text-xs text-muted-foreground font-medium">Siap Sinkronisasi</span>}
+                            value={stats.dealers_with_maps}
+                            valueStyle={{ fontWeight: 700, fontSize: '1.5rem', color: '#10b981' }}
+                            prefix={<CheckCircle2 className="inline size-4 text-emerald-500 mr-1" />}
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">Link Google Maps terisi</p>
+                    </AntCard>
 
-                    <Card className="py-4">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xs font-medium text-muted-foreground">
-                                Tanpa Google Maps
-                            </CardTitle>
-                            <AlertCircle className="size-4 text-amber-500" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                                {stats.dealers_without_maps}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Perlu dilengkapi di Dealer
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <AntCard size="small" className="shadow-xs border border-border/60 hover:border-amber-500/40 transition-all">
+                        <AntStatistic
+                            title={<span className="text-xs text-muted-foreground font-medium">Tanpa Google Maps</span>}
+                            value={stats.dealers_without_maps}
+                            valueStyle={{ fontWeight: 700, fontSize: '1.5rem', color: '#f59e0b' }}
+                            prefix={<AlertCircle className="inline size-4 text-amber-500 mr-1" />}
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">Perlu dilengkapi di Dealer</p>
+                    </AntCard>
 
-                    <Card className="py-4">
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xs font-medium text-muted-foreground">
-                                Total Review di DB
-                            </CardTitle>
-                            <Star className="size-4 text-amber-400 fill-amber-400" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">
-                                {stats.total_reviews_db.toLocaleString('id-ID')}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                Ulasan tersimpan di sistem
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <AntCard size="small" className="shadow-xs border border-border/60 hover:border-amber-500/40 transition-all">
+                        <AntStatistic
+                            title={<span className="text-xs text-muted-foreground font-medium">Total Review di DB</span>}
+                            value={stats.total_reviews_db}
+                            valueStyle={{ fontWeight: 700, fontSize: '1.5rem' }}
+                            prefix={<Star className="inline size-4 text-amber-400 fill-amber-400 mr-1" />}
+                        />
+                        <p className="text-[11px] text-muted-foreground mt-1">Ulasan tersimpan di sistem</p>
+                    </AntCard>
                 </div>
 
                 {/* Main Action Section: Configuration & Execution Panel */}
@@ -943,27 +928,26 @@ export default function SyncReviewsPage({
                                             Target Showroom
                                         </Label>
                                         {canManageAll ? (
-                                            <select
+                                            <AntSelect
                                                 id="dealer_id"
+                                                showSearch
+                                                optionFilterProp="label"
                                                 value={selectedDealerId}
-                                                onChange={(e) => setSelectedDealerId(e.target.value)}
+                                                onChange={(val) => setSelectedDealerId(val)}
                                                 disabled={isRunning}
-                                                className={selectClass}
-                                            >
-                                                <option value="all">
-                                                    🔄 Semua Dealer ({stats.dealers_with_maps} siap sync)
-                                                </option>
-                                                {dealers.map((d) => (
-                                                    <option
-                                                        key={d.id}
-                                                        value={String(d.id)}
-                                                        disabled={!d.link_google_maps}
-                                                    >
-                                                        {d.kode_dealer} - {d.nama_dealer}{' '}
-                                                        {!d.link_google_maps ? '(Tanpa Link Maps)' : ''}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                                className="w-full"
+                                                options={[
+                                                    {
+                                                        value: 'all',
+                                                        label: `🔄 Semua Dealer (${stats.dealers_with_maps} siap sync)`,
+                                                    },
+                                                    ...dealers.map((d) => ({
+                                                        value: String(d.id),
+                                                        label: `${d.kode_dealer} - ${d.nama_dealer} ${!d.link_google_maps ? '(Tanpa Link Maps)' : ''}`,
+                                                        disabled: !d.link_google_maps,
+                                                    })),
+                                                ]}
+                                            />
                                         ) : (
                                             <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm font-medium">
                                                 {dealers[0]
@@ -1049,18 +1033,19 @@ export default function SyncReviewsPage({
                                         <Label htmlFor="sort_by" className="text-xs font-medium">
                                             Urutan Ulasan di Google Maps
                                         </Label>
-                                        <select
+                                        <AntSelect
                                             id="sort_by"
                                             value={sortBy}
-                                            onChange={(e) => setSortBy(e.target.value)}
+                                            onChange={(val) => setSortBy(val)}
                                             disabled={isRunning}
-                                            className={selectClass}
-                                        >
-                                            <option value="newest">Terbaru (Rekomendasi untuk update rutin)</option>
-                                            <option value="relevant">Paling Relevan</option>
-                                            <option value="highest">Rating Tertinggi</option>
-                                            <option value="lowest">Rating Terendah (Keluhan Konsumen)</option>
-                                        </select>
+                                            className="w-full"
+                                            options={[
+                                                { value: 'newest', label: 'Terbaru (Rekomendasi untuk update rutin)' },
+                                                { value: 'relevant', label: 'Paling Relevan' },
+                                                { value: 'highest', label: 'Rating Tertinggi' },
+                                                { value: 'lowest', label: 'Rating Terendah (Keluhan Konsumen)' },
+                                            ]}
+                                        />
                                     </div>
 
                                     {/* Proxy Checkbox */}
@@ -1234,18 +1219,26 @@ export default function SyncReviewsPage({
                                         </span>
                                         <span className="font-mono font-medium">{progressPercent}%</span>
                                     </div>
-                                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                                        <div
-                                            className={`h-full transition-all duration-300 ${
-                                                syncState === 'failed'
-                                                    ? 'bg-rose-500'
-                                                    : syncState === 'completed'
-                                                      ? 'bg-emerald-500'
-                                                      : 'bg-primary'
-                                            }`}
-                                            style={{ width: `${progressPercent}%` }}
-                                        />
-                                    </div>
+                                    <AntProgress
+                                        percent={progressPercent}
+                                        status={
+                                            syncState === 'failed'
+                                                ? 'exception'
+                                                : syncState === 'completed'
+                                                  ? 'success'
+                                                  : isRunning
+                                                    ? 'active'
+                                                    : 'normal'
+                                        }
+                                        strokeColor={
+                                            syncState === 'failed'
+                                                ? '#ef4444'
+                                                : syncState === 'completed'
+                                                  ? '#10b981'
+                                                  : { '0%': '#e60012', '100%': '#ff4d4f' }
+                                        }
+                                        showInfo={false}
+                                    />
                                 </div>
 
                                 {syncMessage && (
@@ -1425,15 +1418,15 @@ export default function SyncReviewsPage({
                                                     {sched.dealer_id && sched.dealer ? (
                                                         <div className="flex items-center gap-1.5">
                                                             <span className="font-semibold text-foreground">{sched.dealer.nama_dealer}</span>
-                                                            <Badge variant="outline" className="text-[10px] font-mono">
+                                                            <AntTag className="text-[10px] font-mono">
                                                                 {sched.dealer.kode_dealer}
-                                                            </Badge>
+                                                            </AntTag>
                                                         </div>
                                                     ) : (
-                                                        <div className="inline-flex items-center gap-1.5 font-semibold text-sky-600 dark:text-sky-400">
-                                                            <Layers className="size-3.5" />
-                                                            <span>Semua Showroom ({dealers.length} Showroom)</span>
-                                                        </div>
+                                                        <AntTag color="blue" className="font-medium">
+                                                            <Layers className="size-3 mr-1 inline" />
+                                                            Semua Showroom ({dealers.length} Showroom)
+                                                        </AntTag>
                                                     )}
                                                 </td>
 
@@ -1444,7 +1437,7 @@ export default function SyncReviewsPage({
 
                                                 {/* Urutan */}
                                                 <td className="px-4 py-3 text-center">
-                                                    <Badge variant="outline" className="text-[11px] font-medium">
+                                                    <AntTag>
                                                         {sched.sort_by === 'newest'
                                                             ? 'Terkini'
                                                             : sched.sort_by === 'highest'
@@ -1452,7 +1445,7 @@ export default function SyncReviewsPage({
                                                             : sched.sort_by === 'lowest'
                                                             ? 'Rating Terendah'
                                                             : 'Paling Relevan'}
-                                                    </Badge>
+                                                    </AntTag>
                                                 </td>
 
                                                 {/* Frekuensi Update */}
@@ -1475,30 +1468,14 @@ export default function SyncReviewsPage({
                                                             className="cursor-pointer transition-opacity hover:opacity-80 inline-flex items-center"
                                                             title="Klik untuk mengubah status aktif/nonaktif"
                                                         >
-                                                            {sched.is_active ? (
-                                                                <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px]">
-                                                                    <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
-                                                                    Aktif
-                                                                </Badge>
-                                                            ) : (
-                                                                <Badge variant="secondary" className="text-muted-foreground gap-1 text-[11px]">
-                                                                    <span className="size-1.5 rounded-full bg-slate-400 inline-block" />
-                                                                    Nonaktif
-                                                                </Badge>
-                                                            )}
+                                                            <AntTag color={sched.is_active ? 'success' : 'default'} className="cursor-pointer">
+                                                                {sched.is_active ? 'Aktif' : 'Nonaktif'}
+                                                            </AntTag>
                                                         </button>
                                                     ) : (
-                                                        sched.is_active ? (
-                                                            <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1 text-[11px]">
-                                                                <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
-                                                                Aktif
-                                                            </Badge>
-                                                        ) : (
-                                                            <Badge variant="secondary" className="text-muted-foreground gap-1 text-[11px]">
-                                                                <span className="size-1.5 rounded-full bg-slate-400 inline-block" />
-                                                                Nonaktif
-                                                            </Badge>
-                                                        )
+                                                        <AntTag color={sched.is_active ? 'success' : 'default'}>
+                                                            {sched.is_active ? 'Aktif' : 'Nonaktif'}
+                                                        </AntTag>
                                                     )}
                                                 </td>
 
@@ -1508,19 +1485,15 @@ export default function SyncReviewsPage({
                                                         <div>
                                                             <p className="text-foreground font-medium">{formatDateTime(sched.last_run_at)}</p>
                                                             {sched.last_status && sched.last_status !== 'idle' && (
-                                                                <p className={`text-[10px] ${
-                                                                    sched.last_status === 'running'
-                                                                        ? 'text-amber-500'
-                                                                        : sched.last_status === 'failed'
-                                                                        ? 'text-rose-500'
-                                                                        : 'text-emerald-500'
-                                                                }`}>
-                                                                    {sched.last_status === 'running'
-                                                                        ? 'Sedang Berjalan'
-                                                                        : sched.last_status === 'failed'
-                                                                        ? 'Gagal'
-                                                                        : 'Selesai'}
-                                                                </p>
+                                                                <div className="mt-0.5">
+                                                                    {sched.last_status === 'running' ? (
+                                                                        <AntTag color="processing">Sedang Berjalan</AntTag>
+                                                                    ) : sched.last_status === 'failed' ? (
+                                                                        <AntTag color="error">Gagal</AntTag>
+                                                                    ) : (
+                                                                        <AntTag color="success">Selesai</AntTag>
+                                                                    )}
+                                                                </div>
                                                             )}
                                                         </div>
                                                     ) : (
@@ -1544,49 +1517,44 @@ export default function SyncReviewsPage({
                                                 {canManageAll && (
                                                     <td className="px-4 py-3 text-right">
                                                         <div className="flex items-center justify-end gap-1">
-                                                            <Button
-                                                                type="button"
-                                                                variant="outline"
-                                                                size="sm"
+                                                            <AntButton
+                                                                size="small"
+                                                                type="dashed"
                                                                 onClick={() => handleRunSchedule(sched)}
-                                                                disabled={runningScheduleId === sched.id || isRunning}
-                                                                className="h-7 px-2 text-xs gap-1 cursor-pointer text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                                                loading={runningScheduleId === sched.id}
+                                                                disabled={isRunning}
+                                                                icon={runningScheduleId !== sched.id ? <Play className="size-3 text-emerald-600 inline mr-0.5" /> : undefined}
+                                                                className="text-xs text-emerald-600 border-emerald-500/40 hover:text-emerald-700"
                                                                 title="Jalankan scraping sekarang"
                                                             >
-                                                                {runningScheduleId === sched.id ? (
-                                                                    <Loader2 className="size-3 animate-spin" />
-                                                                ) : (
-                                                                    <Play className="size-3 fill-emerald-600" />
-                                                                )}
-                                                                <span>Jalankan</span>
-                                                            </Button>
+                                                                Jalankan
+                                                            </AntButton>
 
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="sm"
+                                                            <AntButton
+                                                                size="small"
+                                                                type="text"
                                                                 onClick={() => handleOpenEditModal(sched)}
-                                                                className="h-7 w-7 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                                                                icon={<Pencil className="size-3.5" />}
                                                                 title="Edit jadwal"
-                                                            >
-                                                                <Pencil className="size-3.5" />
-                                                            </Button>
+                                                            />
 
-                                                            <Button
-                                                                type="button"
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={() => handleDeleteSchedule(sched)}
-                                                                disabled={deletingScheduleId === sched.id}
-                                                                className="h-7 w-7 p-0 cursor-pointer text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                                                                title="Hapus jadwal"
+                                                            <AntPopconfirm
+                                                                title="Hapus jadwal auto scrap?"
+                                                                description="Apakah Anda yakin ingin menghapus jadwal ini?"
+                                                                onConfirm={() => handleDeleteSchedule(sched)}
+                                                                okText="Ya, Hapus"
+                                                                cancelText="Batal"
+                                                                okButtonProps={{ danger: true }}
                                                             >
-                                                                {deletingScheduleId === sched.id ? (
-                                                                    <Loader2 className="size-3.5 animate-spin" />
-                                                                ) : (
-                                                                    <Trash2 className="size-3.5" />
-                                                                )}
-                                                            </Button>
+                                                                <AntButton
+                                                                    size="small"
+                                                                    type="text"
+                                                                    danger
+                                                                    icon={<Trash2 className="size-3.5" />}
+                                                                    loading={deletingScheduleId === sched.id}
+                                                                    title="Hapus jadwal"
+                                                                />
+                                                            </AntPopconfirm>
                                                         </div>
                                                     </td>
                                                 )}
@@ -1600,202 +1568,204 @@ export default function SyncReviewsPage({
                 </Card>
 
                 {/* Modal Dialog Tambah / Edit Jadwal */}
-                <Dialog open={isScheduleModalOpen} onOpenChange={setIsScheduleModalOpen}>
-                    <DialogContent className="sm:max-w-[500px]">
-                        <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2">
-                                <Clock className="size-5 text-primary" />
+                <AntModal
+                    open={isScheduleModalOpen}
+                    onCancel={() => setIsScheduleModalOpen(false)}
+                    title={
+                        <div className="flex items-center gap-2">
+                            <Clock className="size-5 text-primary" />
+                            <span className="text-base font-bold">
                                 {editingSchedule ? 'Edit Jadwal Auto Scrap' : 'Tambah Jadwal Auto Scrap'}
-                            </DialogTitle>
-                            <DialogDescription>
-                                Tentukan target showroom, kuota ulasan, urutan ulasan, dan frekuensi auto-update.
-                            </DialogDescription>
-                        </DialogHeader>
+                            </span>
+                        </div>
+                    }
+                    footer={[
+                        <AntButton
+                            key="cancel"
+                            onClick={() => setIsScheduleModalOpen(false)}
+                            disabled={isSubmittingSchedule}
+                        >
+                            Batal
+                        </AntButton>,
+                        <AntButton
+                            key="submit"
+                            type="primary"
+                            loading={isSubmittingSchedule}
+                            disabled={Boolean(intervalError)}
+                            onClick={(e) => handleSaveSchedule(e as any)}
+                        >
+                            {editingSchedule ? 'Perbarui Jadwal' : 'Simpan Jadwal'}
+                        </AntButton>,
+                    ]}
+                    centered
+                    destroyOnClose
+                >
+                    <form onSubmit={handleSaveSchedule} className="space-y-4 pt-2">
+                        {/* Target Showroom */}
+                        <div className="space-y-1.5">
+                            <Label htmlFor="sched-dealer" className="text-xs font-semibold">
+                                Target Showroom
+                            </Label>
+                            <AntSelect
+                                id="sched-dealer"
+                                showSearch
+                                optionFilterProp="label"
+                                value={scheduleForm.dealer_id}
+                                onChange={(val) => setScheduleForm({ ...scheduleForm, dealer_id: val })}
+                                className="w-full"
+                                options={[
+                                    { value: 'all', label: `Semua Showroom (${dealers.length} Showroom)` },
+                                    ...dealers.map((d) => ({
+                                        value: String(d.id),
+                                        label: `${d.kode_dealer} - ${d.nama_dealer} ${!d.link_google_maps ? '(Belum ada link Maps)' : ''}`,
+                                        disabled: !d.link_google_maps,
+                                    })),
+                                ]}
+                            />
+                            <p className="text-[11px] text-muted-foreground">
+                                Pilih &quot;Semua Showroom&quot; untuk scrap otomatis berurutan ke seluruh showroom yang terdaftar.
+                            </p>
+                        </div>
 
-                        <form onSubmit={handleSaveSchedule} className="space-y-4 pt-1">
-                            {/* Target Showroom */}
+                        {/* Jumlah Ulasan Maksimal & Urutan Ulasan */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
-                                <Label htmlFor="sched-dealer" className="text-xs font-semibold">
-                                    Target Showroom
+                                <Label htmlFor="sched-max" className="text-xs font-semibold">
+                                    Jumlah Ulasan Maksimal
                                 </Label>
-                                <select
-                                    id="sched-dealer"
-                                    value={scheduleForm.dealer_id}
-                                    onChange={(e) => setScheduleForm({ ...scheduleForm, dealer_id: e.target.value })}
-                                    className={selectClass}
-                                >
-                                    <option value="all">Semua Showroom ({dealers.length} Showroom)</option>
-                                    {dealers.map((d) => (
-                                        <option key={d.id} value={String(d.id)} disabled={!d.link_google_maps}>
-                                            {d.kode_dealer} - {d.nama_dealer} {!d.link_google_maps ? '(Belum ada link Maps)' : ''}
-                                        </option>
-                                    ))}
-                                </select>
+                                <Input
+                                    id="sched-max"
+                                    type="number"
+                                    min={1}
+                                    max={5000}
+                                    value={scheduleForm.max_reviews}
+                                    onChange={(e) => setScheduleForm({ ...scheduleForm, max_reviews: Number(e.target.value) || 1 })}
+                                    className="h-9 text-xs"
+                                    placeholder="50"
+                                />
                                 <p className="text-[11px] text-muted-foreground">
-                                    Pilih &quot;Semua Showroom&quot; untuk scrap otomatis berurutan ke seluruh showroom yang terdaftar.
+                                    Batas maksimal ulasan per showroom
                                 </p>
                             </div>
 
-                            {/* Jumlah Ulasan Maksimal & Urutan Ulasan */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="sched-max" className="text-xs font-semibold">
-                                        Jumlah Ulasan Maksimal
-                                    </Label>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="sched-sort" className="text-xs font-semibold">
+                                    Urutan Ulasan
+                                </Label>
+                                <AntSelect
+                                    id="sched-sort"
+                                    value={scheduleForm.sort_by}
+                                    onChange={(val) => setScheduleForm({ ...scheduleForm, sort_by: val as any })}
+                                    className="w-full"
+                                    options={[
+                                        { value: 'newest', label: 'Terkini (Newest)' },
+                                        { value: 'highest', label: 'Rating Tertinggi' },
+                                        { value: 'lowest', label: 'Rating Terendah' },
+                                        { value: 'relevant', label: 'Paling Relevan' },
+                                    ]}
+                                />
+                                <p className="text-[11px] text-muted-foreground">
+                                    Prioritas urutan ulasan Google Maps
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Waktu Update / Interval */}
+                        <div className="space-y-1.5 rounded-lg border p-3 bg-muted/20">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-semibold">
+                                    Waktu Update (Frekuensi)
+                                </Label>
+                                <AntTag color="red">
+                                    Minimal 5 Menit
+                                </AntTag>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                                <div>
                                     <Input
-                                        id="sched-max"
                                         type="number"
-                                        min={1}
-                                        max={5000}
-                                        value={scheduleForm.max_reviews}
-                                        onChange={(e) => setScheduleForm({ ...scheduleForm, max_reviews: Number(e.target.value) || 1 })}
-                                        className="h-9 text-xs"
-                                        placeholder="50"
+                                        min={scheduleForm.interval_unit === 'minute' ? 5 : 1}
+                                        value={scheduleForm.interval_value}
+                                        onChange={(e) => {
+                                            const val = Number(e.target.value);
+                                            setScheduleForm({ ...scheduleForm, interval_value: val });
+                                        }}
+                                        className="h-9 text-xs font-medium"
+                                        placeholder="Contoh: 30"
                                     />
-                                    <p className="text-[11px] text-muted-foreground">
-                                        Batas maksimal ulasan per showroom
-                                    </p>
                                 </div>
-
-                                <div className="space-y-1.5">
-                                    <Label htmlFor="sched-sort" className="text-xs font-semibold">
-                                        Urutan Ulasan
-                                    </Label>
-                                    <select
-                                        id="sched-sort"
-                                        value={scheduleForm.sort_by}
-                                        onChange={(e) => setScheduleForm({ ...scheduleForm, sort_by: e.target.value as any })}
-                                        className={selectClass}
-                                    >
-                                        <option value="newest">Terkini (Newest)</option>
-                                        <option value="highest">Rating Tertinggi</option>
-                                        <option value="lowest">Rating Terendah</option>
-                                        <option value="relevant">Paling Relevan</option>
-                                    </select>
-                                    <p className="text-[11px] text-muted-foreground">
-                                        Prioritas urutan ulasan Google Maps
-                                    </p>
+                                <div>
+                                    <AntSelect
+                                        value={scheduleForm.interval_unit}
+                                        onChange={(unit: any) => {
+                                            setScheduleForm({
+                                                ...scheduleForm,
+                                                interval_unit: unit,
+                                                interval_value:
+                                                    unit === 'minute' && scheduleForm.interval_value < 5
+                                                        ? 5
+                                                        : scheduleForm.interval_value,
+                                            });
+                                        }}
+                                        className="w-full"
+                                        options={[
+                                            { value: 'minute', label: 'Menit' },
+                                            { value: 'hour', label: 'Jam' },
+                                            { value: 'day', label: 'Hari' },
+                                            { value: 'week', label: 'Minggu' },
+                                        ]}
+                                    />
                                 </div>
                             </div>
 
-                            {/* Waktu Update / Interval */}
-                            <div className="space-y-1.5 rounded-lg border p-3 bg-muted/20">
-                                <div className="flex items-center justify-between">
-                                    <Label className="text-xs font-semibold">
-                                        Waktu Update (Frekuensi)
-                                    </Label>
-                                    <Badge variant="outline" className="text-[10px] text-muted-foreground font-normal">
-                                        Minimal 5 Menit
-                                    </Badge>
+                            {intervalError ? (
+                                <div className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 mt-1.5 font-medium">
+                                    <AlertCircle className="size-3.5 shrink-0" />
+                                    <span>{intervalError}</span>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 pt-1">
-                                    <div>
-                                        <Input
-                                            type="number"
-                                            min={scheduleForm.interval_unit === 'minute' ? 5 : 1}
-                                            value={scheduleForm.interval_value}
-                                            onChange={(e) => {
-                                                const val = Number(e.target.value);
-                                                setScheduleForm({ ...scheduleForm, interval_value: val });
-                                            }}
-                                            className="h-9 text-xs font-medium"
-                                            placeholder="Contoh: 30"
-                                        />
-                                    </div>
-                                    <div>
-                                        <select
-                                            value={scheduleForm.interval_unit}
-                                            onChange={(e) => {
-                                                const unit = e.target.value as any;
-                                                setScheduleForm({
-                                                    ...scheduleForm,
-                                                    interval_unit: unit,
-                                                    interval_value:
-                                                        unit === 'minute' && scheduleForm.interval_value < 5
-                                                            ? 5
-                                                            : scheduleForm.interval_value,
-                                                });
-                                            }}
-                                            className={selectClass}
-                                        >
-                                            <option value="minute">Menit</option>
-                                            <option value="hour">Jam</option>
-                                            <option value="day">Hari</option>
-                                            <option value="week">Minggu</option>
-                                        </select>
-                                    </div>
-                                </div>
+                            ) : (
+                                <p className="text-[11px] text-muted-foreground mt-1">
+                                    Sistem akan menjalankan auto scrap otomatis setiap{' '}
+                                    <strong className="text-foreground">
+                                        {scheduleForm.interval_value}{' '}
+                                        {scheduleForm.interval_unit === 'minute'
+                                            ? 'Menit'
+                                            : scheduleForm.interval_unit === 'hour'
+                                            ? 'Jam'
+                                            : scheduleForm.interval_unit === 'day'
+                                            ? 'Hari'
+                                            : 'Minggu'}
+                                    </strong>
+                                    .
+                                </p>
+                            )}
+                        </div>
 
-                                {intervalError ? (
-                                    <div className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 mt-1.5 font-medium">
-                                        <AlertCircle className="size-3.5 shrink-0" />
-                                        <span>{intervalError}</span>
-                                    </div>
-                                ) : (
-                                    <p className="text-[11px] text-muted-foreground mt-1">
-                                        Sistem akan menjalankan auto scrap otomatis setiap{' '}
-                                        <strong className="text-foreground">
-                                            {scheduleForm.interval_value}{' '}
-                                            {scheduleForm.interval_unit === 'minute'
-                                                ? 'Menit'
-                                                : scheduleForm.interval_unit === 'hour'
-                                                ? 'Jam'
-                                                : scheduleForm.interval_unit === 'day'
-                                                ? 'Hari'
-                                                : 'Minggu'}
-                                        </strong>
-                                        .
-                                    </p>
-                                )}
+                        {/* Switch Options */}
+                        <div className="flex flex-col gap-2 pt-1">
+                            <div className="flex items-center justify-between py-1">
+                                <Label htmlFor="sched-proxy" className="text-xs font-medium cursor-pointer">
+                                    Gunakan Rotating Proxy (Direkomendasikan)
+                                </Label>
+                                <AntSwitch
+                                    id="sched-proxy"
+                                    checked={scheduleForm.use_proxy}
+                                    onChange={(checked) => setScheduleForm({ ...scheduleForm, use_proxy: checked })}
+                                />
                             </div>
-
-                            {/* Checkbox Options */}
-                            <div className="flex flex-col gap-2 pt-1">
-                                <div className="flex items-center gap-2">
-                                    <Checkbox
-                                        id="sched-proxy"
-                                        checked={scheduleForm.use_proxy}
-                                        onCheckedChange={(checked) => setScheduleForm({ ...scheduleForm, use_proxy: Boolean(checked) })}
-                                    />
-                                    <Label htmlFor="sched-proxy" className="text-xs font-normal cursor-pointer">
-                                        Gunakan Proxy Rotasi (Direkomendasikan)
-                                    </Label>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Checkbox
-                                        id="sched-active"
-                                        checked={scheduleForm.is_active}
-                                        onCheckedChange={(checked) => setScheduleForm({ ...scheduleForm, is_active: Boolean(checked) })}
-                                    />
-                                    <Label htmlFor="sched-active" className="text-xs font-normal cursor-pointer">
-                                        Jadwal langsung diaktifkan
-                                    </Label>
-                                </div>
+                            <div className="flex items-center justify-between py-1">
+                                <Label htmlFor="sched-active" className="text-xs font-medium cursor-pointer">
+                                    Status Jadwal Langsung Aktif
+                                </Label>
+                                <AntSwitch
+                                    id="sched-active"
+                                    checked={scheduleForm.is_active}
+                                    onChange={(checked) => setScheduleForm({ ...scheduleForm, is_active: checked })}
+                                />
                             </div>
-
-                            <DialogFooter className="pt-2">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setIsScheduleModalOpen(false)}
-                                    disabled={isSubmittingSchedule}
-                                >
-                                    Batal
-                                </Button>
-                                <Button
-                                    type="submit"
-                                    size="sm"
-                                    disabled={isSubmittingSchedule || Boolean(intervalError)}
-                                    className="gap-1.5"
-                                >
-                                    {isSubmittingSchedule && <Loader2 className="size-3.5 animate-spin" />}
-                                    {editingSchedule ? 'Perbarui Jadwal' : 'Simpan Jadwal'}
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                        </div>
+                    </form>
+                </AntModal>
 
                 {/* Showroom Quick Table */}
                 <Card>
@@ -1816,40 +1786,28 @@ export default function SyncReviewsPage({
                                     className="h-8 pl-8 text-xs"
                                 />
                             </div>
-                            <div className="flex items-center gap-1 rounded-lg border p-1 text-xs">
-                                <button
-                                    type="button"
-                                    onClick={() => setFilterMapsOnly('all')}
-                                    className={`rounded px-2 py-0.5 transition-colors ${
-                                        filterMapsOnly === 'all'
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'text-muted-foreground hover:bg-muted'
-                                    }`}
+                            <div className="flex items-center gap-1.5 text-xs">
+                                <AntTag.CheckableTag
+                                    checked={filterMapsOnly === 'all'}
+                                    onChange={() => setFilterMapsOnly('all')}
+                                    className="cursor-pointer"
                                 >
                                     Semua ({dealers.length})
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setFilterMapsOnly('with_maps')}
-                                    className={`rounded px-2 py-0.5 transition-colors ${
-                                        filterMapsOnly === 'with_maps'
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'text-muted-foreground hover:bg-muted'
-                                    }`}
+                                </AntTag.CheckableTag>
+                                <AntTag.CheckableTag
+                                    checked={filterMapsOnly === 'with_maps'}
+                                    onChange={() => setFilterMapsOnly('with_maps')}
+                                    className="cursor-pointer"
                                 >
                                     Terkoneksi ({stats.dealers_with_maps})
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setFilterMapsOnly('without_maps')}
-                                    className={`rounded px-2 py-0.5 transition-colors ${
-                                        filterMapsOnly === 'without_maps'
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'text-muted-foreground hover:bg-muted'
-                                    }`}
+                                </AntTag.CheckableTag>
+                                <AntTag.CheckableTag
+                                    checked={filterMapsOnly === 'without_maps'}
+                                    onChange={() => setFilterMapsOnly('without_maps')}
+                                    className="cursor-pointer"
                                 >
                                     Belum Ada ({stats.dealers_without_maps})
-                                </button>
+                                </AntTag.CheckableTag>
                             </div>
                         </div>
                     </CardHeader>
@@ -1885,12 +1843,9 @@ export default function SyncReviewsPage({
                                                 <td className="px-4 py-3">
                                                     {d.link_google_maps ? (
                                                         <div className="flex items-center gap-1.5">
-                                                            <Badge
-                                                                variant="outline"
-                                                                className="text-emerald-600 border-emerald-500/30 bg-emerald-500/5 text-[11px]"
-                                                            >
+                                                            <AntTag color="success">
                                                                 Terkoneksi
-                                                            </Badge>
+                                                            </AntTag>
                                                             <a
                                                                 href={d.link_google_maps}
                                                                 target="_blank"
@@ -1903,12 +1858,9 @@ export default function SyncReviewsPage({
                                                         </div>
                                                     ) : (
                                                         <div className="flex items-center gap-1.5">
-                                                            <Badge
-                                                                variant="outline"
-                                                                className="text-amber-600 border-amber-500/30 bg-amber-500/5 text-[11px]"
-                                                            >
+                                                            <AntTag color="warning">
                                                                 Belum Ada Link
-                                                            </Badge>
+                                                            </AntTag>
                                                             {canManageAll && (
                                                                 <Link
                                                                     href={dealersRoute.index()}
@@ -1939,20 +1891,18 @@ export default function SyncReviewsPage({
                                                     )}
                                                 </td>
                                                 <td className="px-4 py-3 text-right">
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
+                                                    <AntButton
+                                                        size="small"
                                                         disabled={!d.link_google_maps || isRunning}
                                                         onClick={() => {
                                                             setSelectedDealerId(String(d.id));
                                                             handleStartServerSync(String(d.id));
                                                         }}
-                                                        className="h-7 text-xs gap-1"
+                                                        icon={<RefreshCw className="size-3 inline mr-1" />}
+                                                        className="text-xs"
                                                     >
-                                                        <RefreshCw className="size-3" />
                                                         Sync
-                                                    </Button>
+                                                    </AntButton>
                                                 </td>
                                             </tr>
                                         ))

@@ -23,6 +23,15 @@ import {
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { toast } from 'sonner';
+import {
+    Button as AntButton,
+    Card as AntCard,
+    Input as AntInput,
+    Popconfirm as AntPopconfirm,
+    Select as AntSelect,
+    Statistic as AntStatistic,
+    Tag as AntTag,
+} from 'antd';
 import InputError from '@/components/input-error';
 import { Pagination } from '@/components/pagination';
 import { Badge } from '@/components/ui/badge';
@@ -683,34 +692,32 @@ export default function ReviewsIndex({
 
                     <div className="flex items-center gap-2">
                         {isSuperAdmin && (
-                            <Button
-                                variant="outline"
-                                asChild
-                                className="shrink-0 gap-2 border-primary/40 text-primary hover:bg-primary/10"
-                            >
-                                <Link href={reviewsRoute.sync.index.url()}>
-                                    <RefreshCw className="size-4" />
+                            <Link href={reviewsRoute.sync.index.url()}>
+                                <AntButton
+                                    icon={<RefreshCw className="size-4" />}
+                                    className="shrink-0"
+                                >
                                     Sync Review
-                                </Link>
-                            </Button>
+                                </AntButton>
+                            </Link>
                         )}
                         {canManageAll && (
                             <>
-                                <Button
-                                    variant="outline"
+                                <AntButton
+                                    icon={<Upload className="size-4" />}
                                     onClick={handleOpenImport}
-                                    className="shrink-0 gap-2"
+                                    className="shrink-0"
                                 >
-                                    <Upload className="size-4" />
                                     Import Review
-                                </Button>
-                                <Button
+                                </AntButton>
+                                <AntButton
+                                    type="primary"
+                                    icon={<Plus className="size-4" />}
                                     onClick={handleOpenCreate}
-                                    className="shrink-0 gap-2"
+                                    className="shrink-0"
                                 >
-                                    <Plus className="size-4" />
                                     Tambah Review
-                                </Button>
+                                </AntButton>
                             </>
                         )}
                     </div>
@@ -718,7 +725,7 @@ export default function ReviewsIndex({
 
                 {/* Stats Cards */}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:gap-4">
-                    <div className="rounded-xl border border-sidebar-border/70 bg-card p-4 shadow-2xs dark:border-sidebar-border">
+                    <AntCard size="small" className="rounded-xl shadow-2xs border-sidebar-border/70 dark:border-sidebar-border">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-muted-foreground">
                                 Total Review
@@ -733,9 +740,9 @@ export default function ReviewsIndex({
                         <p className="mt-0.5 text-[11px] text-muted-foreground">
                             Semua ulasan terdaftar
                         </p>
-                    </div>
+                    </AntCard>
 
-                    <div className="rounded-xl border border-sidebar-border/70 bg-card p-4 shadow-2xs dark:border-sidebar-border">
+                    <AntCard size="small" className="rounded-xl shadow-2xs border-sidebar-border/70 dark:border-sidebar-border">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-muted-foreground">
                                 Rata-rata Rating
@@ -757,9 +764,9 @@ export default function ReviewsIndex({
                         <p className="mt-0.5 text-[11px] text-muted-foreground">
                             Skor kepuasan pelanggan
                         </p>
-                    </div>
+                    </AntCard>
 
-                    <div className="rounded-xl border border-sidebar-border/70 bg-card p-4 shadow-2xs dark:border-sidebar-border">
+                    <AntCard size="small" className="rounded-xl shadow-2xs border-sidebar-border/70 dark:border-sidebar-border">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-muted-foreground">
                                 Sudah Direspon
@@ -774,9 +781,9 @@ export default function ReviewsIndex({
                         <p className="mt-0.5 text-[11px] text-muted-foreground">
                             {respondedPct}% telah ditanggapi
                         </p>
-                    </div>
+                    </AntCard>
 
-                    <div className="rounded-xl border border-sidebar-border/70 bg-card p-4 shadow-2xs dark:border-sidebar-border">
+                    <AntCard size="small" className="rounded-xl shadow-2xs border-sidebar-border/70 dark:border-sidebar-border">
                         <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-muted-foreground">
                                 Belum Direspon
@@ -791,7 +798,7 @@ export default function ReviewsIndex({
                         <p className="mt-0.5 text-[11px] text-muted-foreground">
                             Menunggu tindak lanjut
                         </p>
-                    </div>
+                    </AntCard>
                 </div>
 
                 {/* Filter and Search Panel */}
@@ -805,100 +812,123 @@ export default function ReviewsIndex({
                         className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${canManageAll ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}
                     >
                         {/* Search Input */}
-                        <form
-                            onSubmit={handleSearchSubmit}
-                            className="relative"
-                        >
-                            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                type="text"
+                        <div>
+                            <AntInput.Search
                                 placeholder="Cari reviewer, ulasan..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                className="pr-8 pl-9"
+                                onSearch={(val) => {
+                                    applyFilters({
+                                        search: val,
+                                        dealer_id: dealerFilter,
+                                        star_rate: starFilter,
+                                        respon_from_owner: responFilter,
+                                    });
+                                }}
+                                allowClear
+                                className="w-full"
                             />
-                            {search && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setSearch('');
-                                        applyFilters({
-                                            search: '',
-                                            dealer_id: dealerFilter,
-                                            star_rate: starFilter,
-                                            respon_from_owner: responFilter,
-                                        });
-                                    }}
-                                    className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                                >
-                                    <X className="size-4" />
-                                </button>
-                            )}
-                        </form>
+                        </div>
 
                         {/* Filter Dealer */}
                         {canManageAll && (
                             <div>
-                                <select
-                                    value={dealerFilter}
-                                    onChange={handleDealerChange}
-                                    className={selectClass}
-                                    aria-label="Filter Dealer"
-                                >
-                                    <option value="">Semua Dealer</option>
-                                    {dealers.map((d) => (
-                                        <option key={d.id} value={d.id}>
-                                            {d.kode_dealer} - {d.nama_dealer}
-                                        </option>
-                                    ))}
-                                </select>
+                                <AntSelect
+                                    showSearch
+                                    optionFilterProp="label"
+                                    placeholder="Semua Dealer"
+                                    value={dealerFilter || undefined}
+                                    onChange={(val) => {
+                                        const nextVal = val ?? '';
+                                        setDealerFilter(nextVal);
+                                        applyFilters({
+                                            search,
+                                            dealer_id: nextVal,
+                                            star_rate: starFilter,
+                                            respon_from_owner: responFilter,
+                                        });
+                                    }}
+                                    allowClear
+                                    className="w-full"
+                                    options={[
+                                        { value: '', label: 'Semua Dealer' },
+                                        ...dealers.map((d) => ({
+                                            value: String(d.id),
+                                            label: `${d.kode_dealer} - ${d.nama_dealer}`,
+                                        })),
+                                    ]}
+                                />
                             </div>
                         )}
 
                         {/* Filter Star Rate */}
                         <div>
-                            <select
-                                value={starFilter}
-                                onChange={handleStarChange}
-                                className={selectClass}
-                                aria-label="Filter Rating"
-                            >
-                                <option value="">Semua Rating</option>
-                                <option value="5">★ 5 Bintang</option>
-                                <option value="4">★ 4 Bintang</option>
-                                <option value="3">★ 3 Bintang</option>
-                                <option value="2">★ 2 Bintang</option>
-                                <option value="1">★ 1 Bintang</option>
-                            </select>
+                            <AntSelect
+                                placeholder="Semua Rating"
+                                value={starFilter || undefined}
+                                onChange={(val) => {
+                                    const nextVal = val ?? '';
+                                    setStarFilter(nextVal);
+                                    applyFilters({
+                                        search,
+                                        dealer_id: dealerFilter,
+                                        star_rate: nextVal,
+                                        respon_from_owner: responFilter,
+                                    });
+                                }}
+                                allowClear
+                                className="w-full"
+                                options={[
+                                    { value: '', label: 'Semua Rating' },
+                                    { value: '5', label: '★ 5 Bintang' },
+                                    { value: '4', label: '★ 4 Bintang' },
+                                    { value: '3', label: '★ 3 Bintang' },
+                                    { value: '2', label: '★ 2 Bintang' },
+                                    { value: '1', label: '★ 1 Bintang' },
+                                ]}
+                            />
                         </div>
 
                         {/* Filter Respon From Owner */}
                         <div>
-                            <select
-                                value={responFilter}
-                                onChange={handleResponChange}
-                                className={selectClass}
-                                aria-label="Filter Respon Owner"
-                            >
-                                <option value="">Semua Status Respon</option>
-                                <option value="true">
-                                    Sudah Direspon Owner
-                                </option>
-                                <option value="false">Belum Direspon</option>
-                            </select>
+                            <AntSelect
+                                placeholder="Semua Status Respon"
+                                value={responFilter || undefined}
+                                onChange={(val) => {
+                                    const nextVal = val ?? '';
+                                    setResponFilter(nextVal);
+                                    applyFilters({
+                                        search,
+                                        dealer_id: dealerFilter,
+                                        star_rate: starFilter,
+                                        respon_from_owner: nextVal,
+                                    });
+                                }}
+                                allowClear
+                                className="w-full"
+                                options={[
+                                    { value: '', label: 'Semua Status Respon' },
+                                    {
+                                        value: 'true',
+                                        label: 'Sudah Direspon Owner',
+                                    },
+                                    { value: 'false', label: 'Belum Direspon' },
+                                ]}
+                            />
                         </div>
                     </div>
 
                     {hasActiveFilters && (
                         <div className="mt-3 flex items-center justify-between border-t border-sidebar-border/50 pt-3 text-xs text-muted-foreground dark:border-sidebar-border">
                             <span>Filter aktif diterapkan</span>
-                            <button
-                                type="button"
+                            <AntButton
+                                type="link"
+                                size="small"
                                 onClick={handleResetFilters}
-                                className="font-medium text-primary hover:underline"
+                                className="p-0 font-medium"
                             >
                                 Reset Semua Filter
-                            </button>
+                            </AntButton>
                         </div>
                     )}
                 </div>
@@ -1028,12 +1058,12 @@ export default function ReviewsIndex({
                                                     )}
                                                 </td>
                                                 <td className="px-3 py-3.5 whitespace-nowrap">
-                                                    <span className="inline-flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
+                                                    <AntTag color="gold" className="inline-flex items-center gap-1 font-semibold">
                                                         <Star className="size-3.5 fill-amber-400 text-amber-500" />
                                                         {Number(
                                                             rev.star_rate,
                                                         ).toFixed(1)}
-                                                    </span>
+                                                    </AntTag>
                                                 </td>
                                                 <td className="max-w-[280px] min-w-[200px] px-3 py-3.5 text-xs text-foreground">
                                                     {rev.review ? (
@@ -1056,19 +1086,13 @@ export default function ReviewsIndex({
                                                 </td>
                                                 <td className="px-3 py-3.5 text-center whitespace-nowrap">
                                                     {rev.respon_from_owner ? (
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="border-emerald-600/30 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-400"
-                                                        >
+                                                        <AntTag color="success">
                                                             Sudah Direspon
-                                                        </Badge>
+                                                        </AntTag>
                                                     ) : (
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="border-muted bg-muted/40 text-muted-foreground"
-                                                        >
+                                                        <AntTag>
                                                             Belum Direspon
-                                                        </Badge>
+                                                        </AntTag>
                                                     )}
                                                 </td>
                                                 <td className="px-3 py-3.5 font-mono text-xs whitespace-nowrap text-muted-foreground">
@@ -1121,56 +1145,44 @@ export default function ReviewsIndex({
                                                 </td>
                                                 <td className="px-3 py-3.5 text-right whitespace-nowrap">
                                                     <div className="flex items-center justify-end gap-1">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
+                                                        <AntButton
+                                                            type="text"
+                                                            size="small"
                                                             onClick={() =>
                                                                 handleOpenDetail(
                                                                     rev,
                                                                 )
                                                             }
-                                                            className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                                                            icon={<Eye className="size-3.5" />}
+                                                            className="text-muted-foreground hover:text-foreground"
                                                             title="Lihat Detail Review"
-                                                        >
-                                                            <Eye className="size-3.5" />
-                                                            <span className="sr-only">
-                                                                Detail
-                                                            </span>
-                                                        </Button>
+                                                        />
                                                         {canManageAll && (
                                                             <>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
+                                                                <AntButton
+                                                                    type="text"
+                                                                    size="small"
                                                                     onClick={() =>
                                                                         handleOpenEdit(
                                                                             rev,
                                                                         )
                                                                     }
-                                                                    className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                                                                    icon={<Edit2 className="size-3.5" />}
+                                                                    className="text-muted-foreground hover:text-foreground"
                                                                     title="Edit Review"
-                                                                >
-                                                                    <Edit2 className="size-3.5" />
-                                                                    <span className="sr-only">
-                                                                        Edit
-                                                                    </span>
-                                                                </Button>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
+                                                                />
+                                                                <AntButton
+                                                                    type="text"
+                                                                    size="small"
+                                                                    danger
                                                                     onClick={() =>
                                                                         handleOpenDelete(
                                                                             rev,
                                                                         )
                                                                     }
-                                                                    className="h-8 px-2 text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
+                                                                    icon={<Trash2 className="size-3.5" />}
                                                                     title="Hapus Review"
-                                                                >
-                                                                    <Trash2 className="size-3.5" />
-                                                                    <span className="sr-only">
-                                                                        Hapus
-                                                                    </span>
-                                                                </Button>
+                                                                />
                                                             </>
                                                         )}
                                                     </div>

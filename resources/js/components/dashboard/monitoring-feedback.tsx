@@ -16,6 +16,14 @@ import {
     XCircle,
 } from 'lucide-react';
 import React from 'react';
+import {
+    Button as AntButton,
+    Card as AntCard,
+    Input as AntInput,
+    Pagination as AntPagination,
+    Segmented as AntSegmented,
+    Statistic as AntStatistic,
+} from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -670,61 +678,52 @@ export function MonitoringFeedback({
                     </div>
 
                     {/* Search */}
-                    <div className="relative">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                        <input
-                            type="text"
-                            placeholder="Cari dealer..."
-                            value={search}
-                            onChange={(e) => {
-                                setSearch(e.target.value);
-                                setCurrentPage(1);
-                            }}
-                            className="h-8 w-36 sm:w-44 rounded-md border border-input bg-background pl-8 pr-2 text-xs shadow-2xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        />
-                    </div>
+                    <AntInput
+                        placeholder="Cari dealer..."
+                        prefix={<Search className="size-3.5 text-muted-foreground mr-1" />}
+                        value={search}
+                        onChange={(e) => {
+                            setSearch(e.target.value);
+                            setCurrentPage(1);
+                        }}
+                        allowClear
+                        className="w-36 sm:w-48 text-xs"
+                    />
 
                     {/* View Mode Toggle */}
-                    <div className="flex items-center rounded-md border bg-muted/40 p-0.5 text-xs">
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('table')}
-                            className={`flex items-center gap-1 rounded px-2 py-1 font-medium transition-colors cursor-pointer ${
-                                viewMode === 'table'
-                                    ? 'bg-background shadow-xs text-foreground font-semibold'
-                                    : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            title="Tampilan Matriks Tabel"
-                        >
-                            <TableIcon className="size-3.5" />
-                            <span className="hidden sm:inline">Tabel</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('chart')}
-                            className={`flex items-center gap-1 rounded px-2 py-1 font-medium transition-colors cursor-pointer ${
-                                viewMode === 'chart'
-                                    ? 'bg-background shadow-xs text-foreground font-semibold'
-                                    : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            title="Tampilan Grafik Performa"
-                        >
-                            <BarChart3 className="size-3.5" />
-                            <span className="hidden sm:inline">Grafik</span>
-                        </button>
-                    </div>
+                    <AntSegmented
+                        value={viewMode}
+                        onChange={(val) => setViewMode(val as 'table' | 'chart')}
+                        options={[
+                            {
+                                label: (
+                                    <span className="flex items-center gap-1 text-xs">
+                                        <TableIcon className="size-3.5" />
+                                        <span className="hidden sm:inline">Tabel</span>
+                                    </span>
+                                ),
+                                value: 'table',
+                            },
+                            {
+                                label: (
+                                    <span className="flex items-center gap-1 text-xs">
+                                        <BarChart3 className="size-3.5" />
+                                        <span className="hidden sm:inline">Grafik</span>
+                                    </span>
+                                ),
+                                value: 'chart',
+                            },
+                        ]}
+                    />
 
                     {/* Export CSV */}
-                    <Button
-                        variant="outline"
-                        size="sm"
+                    <AntButton
                         onClick={handleExportCsv}
-                        className="h-8 gap-1.5 text-xs cursor-pointer bg-background"
-                        title="Download CSV"
+                        icon={<Download className="size-3.5" />}
+                        className="text-xs font-medium"
                     >
-                        <Download className="size-3.5" />
                         <span className="hidden md:inline">Export CSV</span>
-                    </Button>
+                    </AntButton>
                 </div>
             </CardHeader>
 
@@ -936,51 +935,44 @@ export function MonitoringFeedback({
                     <div className="p-4 sm:p-6 space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             {/* Summary Card 1 */}
-                            <div className="rounded-xl border p-4 bg-muted/20">
-                                <div className="text-xs text-muted-foreground font-medium">
-                                    Pertumbuhan Ulasan (M vs M-1)
-                                </div>
-                                <div
-                                    className={`text-2xl font-bold mt-1 ${
-                                        (summary?.growth_review ?? 0) >= 0
-                                            ? 'text-emerald-600 dark:text-emerald-400'
-                                            : 'text-rose-600 dark:text-rose-400'
-                                    }`}
-                                >
-                                    {summary?.growth_review !== null
-                                        ? `${(summary?.growth_review ?? 0) > 0 ? '+' : ''}${summary?.growth_review}%`
-                                        : '-'}
-                                </div>
+                            <AntCard size="small" className="border shadow-2xs">
+                                <AntStatistic
+                                    title={<span className="text-xs text-muted-foreground font-medium">Pertumbuhan Ulasan (M vs M-1)</span>}
+                                    value={summary?.growth_review !== null ? `${(summary?.growth_review ?? 0) > 0 ? '+' : ''}${summary?.growth_review}%` : '-'}
+                                    valueStyle={{
+                                        color: (summary?.growth_review ?? 0) >= 0 ? '#10b981' : '#f43f5e',
+                                        fontWeight: 700,
+                                    }}
+                                />
                                 <div className="text-[11px] text-muted-foreground mt-1">
                                     {summary?.jumlah_review_m ?? 0} ulasan (M) vs {summary?.jumlah_review_m1 ?? 0} ulasan (M-1)
                                 </div>
-                            </div>
+                            </AntCard>
 
                             {/* Summary Card 2 */}
-                            <div className="rounded-xl border p-4 bg-muted/20">
-                                <div className="text-xs text-muted-foreground font-medium">
-                                    Pencapaian Respons Ulasan (%ACH)
-                                </div>
-                                <div className="text-2xl font-bold mt-1 text-blue-600 dark:text-blue-400">
-                                    {summary?.ach_feedback.toFixed(2) ?? 0}%
-                                </div>
+                            <AntCard size="small" className="border shadow-2xs">
+                                <AntStatistic
+                                    title={<span className="text-xs text-muted-foreground font-medium">Pencapaian Respons Ulasan (%ACH)</span>}
+                                    value={`${summary?.ach_feedback ? summary.ach_feedback.toFixed(2) : 0}%`}
+                                    valueStyle={{ color: '#2563eb', fontWeight: 700 }}
+                                />
                                 <div className="text-[11px] text-muted-foreground mt-1">
                                     {summary?.feedback_done ?? 0} terjawab | {summary?.not_yet_feedback ?? 0} menunggu respon
                                 </div>
-                            </div>
+                            </AntCard>
 
                             {/* Summary Card 3 */}
-                            <div className="rounded-xl border p-4 bg-muted/20">
-                                <div className="text-xs text-muted-foreground font-medium">
-                                    Rata-rata Skor GMB
-                                </div>
-                                <div className="text-2xl font-bold mt-1 text-amber-500">
-                                    ★ {summary?.gmb_score?.toFixed(2) ?? '-'}
-                                </div>
+                            <AntCard size="small" className="border shadow-2xs">
+                                <AntStatistic
+                                    title={<span className="text-xs text-muted-foreground font-medium">Rata-rata Skor GMB</span>}
+                                    value={summary?.gmb_score?.toFixed(2) ?? '-'}
+                                    prefix={<span className="text-amber-500 mr-1">★</span>}
+                                    valueStyle={{ color: '#f59e0b', fontWeight: 700 }}
+                                />
                                 <div className="text-[11px] text-muted-foreground mt-1">
                                     Bintang 4-5: {summary?.rating_4_5 ?? 0} | Kritis (1-3★): {summary?.rating_1_3 ?? 0}
                                 </div>
-                            </div>
+                            </AntCard>
                         </div>
 
                         {/* Top Showrooms Growth & Volume Comparison */}
@@ -1056,7 +1048,7 @@ export function MonitoringFeedback({
                 )}
             </CardContent>
 
-            {viewMode === 'table' && sortedDealers.length > 15 && (
+            {viewMode === 'table' && sortedDealers.length > 0 && (
                 <CardFooter className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t px-4 py-2.5 bg-muted/10 text-xs">
                     <div className="flex items-center gap-2 text-muted-foreground">
                         <span>Menampilkan</span>
@@ -1076,30 +1068,15 @@ export function MonitoringFeedback({
                         <span>showroom</span>
                     </div>
 
-                    {pageSize !== 'all' && totalPages > 1 && (
-                        <div className="flex items-center gap-1">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                disabled={currentPage === 1}
-                                className="h-7 px-2 text-xs cursor-pointer"
-                            >
-                                Sebelumnya
-                            </Button>
-                            <span className="px-2 text-xs font-medium text-foreground">
-                                {currentPage} / {totalPages}
-                            </span>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                                disabled={currentPage === totalPages}
-                                className="h-7 px-2 text-xs cursor-pointer"
-                            >
-                                Selanjutnya
-                            </Button>
-                        </div>
+                    {pageSize !== 'all' && (
+                        <AntPagination
+                            size="small"
+                            current={currentPage}
+                            pageSize={pageSize}
+                            total={sortedDealers.length}
+                            onChange={(page) => setCurrentPage(page)}
+                            showSizeChanger={false}
+                        />
                     )}
                 </CardFooter>
             )}

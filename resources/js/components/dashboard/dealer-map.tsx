@@ -1,5 +1,7 @@
-import L from 'leaflet';
+import type * as LTypes from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+let L: typeof LTypes | null = null;
 import {
     Building2,
     Check,
@@ -17,15 +19,10 @@ import {
     Star,
 } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { usePage } from '@inertiajs/react';
+import { Modal as AntModal, Tag as AntTag, Tooltip as AntTooltip } from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
 import reviewsRoute from '@/routes/reviews';
 
 export interface DealerStarRecap {
@@ -137,7 +134,10 @@ export const MAP_STYLES: Record<
 };
 
 // 1. Kapsul Modern (Default) - Sleek pill with Honda Wing + Star Rating
-function createCapsulePin(dealer: MapDealer, isSelected: boolean) {
+function createCapsulePin(dealer: MapDealer, isSelected: boolean): LTypes.DivIcon | null {
+    if (!L) return null;
+    const leaflet = L;
+
     const rating = dealer.star_rate !== null && dealer.star_rate !== undefined
         ? dealer.star_rate.toFixed(1)
         : '-';
@@ -145,7 +145,7 @@ function createCapsulePin(dealer: MapDealer, isSelected: boolean) {
     const isHigh = (dealer.star_rate ?? 0) >= 4.8;
     const accentColor = isSelected ? '#2563eb' : isHigh ? '#dc2626' : '#ea580c';
 
-    return L.divIcon({
+    return leaflet.divIcon({
         className: 'dealer-marker-div-icon',
         html: `
             <div class="dealer-pin-node cursor-pointer" style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.28)); transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);">
@@ -189,7 +189,10 @@ function createCapsulePin(dealer: MapDealer, isSelected: boolean) {
 }
 
 // 2. Teardrop Pin - Google Maps style pin
-function createTeardropPin(dealer: MapDealer, isSelected: boolean) {
+function createTeardropPin(dealer: MapDealer, isSelected: boolean): LTypes.DivIcon | null {
+    if (!L) return null;
+    const leaflet = L;
+
     const rating = dealer.star_rate !== null && dealer.star_rate !== undefined
         ? dealer.star_rate.toFixed(1)
         : '-';
@@ -197,7 +200,7 @@ function createTeardropPin(dealer: MapDealer, isSelected: boolean) {
     const isHigh = (dealer.star_rate ?? 0) >= 4.8;
     const pinColor = isSelected ? '#2563eb' : isHigh ? '#dc2626' : '#ea580c';
 
-    return L.divIcon({
+    return leaflet.divIcon({
         className: 'dealer-marker-div-icon',
         html: `
             <div class="dealer-pin-node cursor-pointer" style="position: relative; width: 34px; height: 44px; display: flex; justify-content: center; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.35)); transition: transform 0.2s ease;">
@@ -259,7 +262,10 @@ function createTeardropPin(dealer: MapDealer, isSelected: boolean) {
 }
 
 // 3. Clean Badge Pin - Neat rectangular badge with no text cut-off
-function createBadgePin(dealer: MapDealer, isSelected: boolean) {
+function createBadgePin(dealer: MapDealer, isSelected: boolean): LTypes.DivIcon | null {
+    if (!L) return null;
+    const leaflet = L;
+
     const rating = dealer.star_rate !== null && dealer.star_rate !== undefined
         ? dealer.star_rate.toFixed(1)
         : '-';
@@ -267,7 +273,7 @@ function createBadgePin(dealer: MapDealer, isSelected: boolean) {
     const isHigh = (dealer.star_rate ?? 0) >= 4.8;
     const borderColor = isSelected ? '#2563eb' : isHigh ? '#dc2626' : '#ea580c';
 
-    return L.divIcon({
+    return leaflet.divIcon({
         className: 'dealer-marker-div-icon',
         html: `
             <div class="dealer-pin-node cursor-pointer" style="display: flex; flex-direction: column; align-items: center; filter: drop-shadow(0 3px 5px rgba(0,0,0,0.3)); transition: transform 0.2s ease;">
@@ -319,7 +325,8 @@ function createBadgePin(dealer: MapDealer, isSelected: boolean) {
 }
 
 // Master DivIcon generator supporting chosen pin style
-function createDealerPinIcon(dealer: MapDealer, isSelected: boolean, pinStyle: MapPinStyle = 'capsule') {
+function createDealerPinIcon(dealer: MapDealer, isSelected: boolean, pinStyle: MapPinStyle = 'capsule'): LTypes.DivIcon | null {
+    if (!L) return null;
     if (pinStyle === 'teardrop') {
         return createTeardropPin(dealer, isSelected);
     }
@@ -458,9 +465,32 @@ export default function DealerMap({
     className = '',
 }: DealerMapProps) {
     const mapContainerRef = useRef<HTMLDivElement | null>(null);
-    const mapInstanceRef = useRef<L.Map | null>(null);
-    const markersLayerRef = useRef<L.LayerGroup | null>(null);
-    const tileLayerRef = useRef<L.TileLayer | null>(null);
+    const mapInstanceRef = useRef<LTypes.Map | null>(null);
+    const markersLayerRef = useRef<LTypes.LayerGroup | null>(null);
+    const tileLayerRef = useRef<LTypes.TileLayer | null>(null);
+
+    const [isLeafletReady, setIsLeafletReady] = useState(() => L !== null);
+
+    useEffect(() => {
+        let isCancelled = false;
+        if (typeof window === 'undefined') return;
+
+        if (L) {
+            setIsLeafletReady(true);
+            return;
+        }
+
+        import('leaflet').then((leafletModule) => {
+            L = (leafletModule.default || leafletModule) as typeof LTypes;
+            if (!isCancelled) {
+                setIsLeafletReady(true);
+            }
+        });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, []);
 
     // Map style & Pin design with local storage persistence
     const [mapStyle, setMapStyle] = useState<MapTileStyle>(() => {
@@ -479,8 +509,13 @@ export default function DealerMap({
         return 'capsule';
     });
 
-    // MapTiler API Key loaded strictly from developer environment (.env)
-    const apiKey = ((import.meta.env.VITE_MAPTILER_API_KEY as string | undefined) || '').trim();
+    const page = usePage<{ maptilerApiKey?: string }>();
+    // MapTiler API Key loaded with multi-layer fallback: Inertia shared props, .env, or developer default
+    const apiKey = (
+        page.props.maptilerApiKey ||
+        (import.meta.env.VITE_MAPTILER_API_KEY as string | undefined) ||
+        'Ky456DhoOJH2nIXinbxJ'
+    ).trim();
 
     const [showStyleModal, setShowStyleModal] = useState(false);
 
@@ -531,83 +566,106 @@ export default function DealerMap({
         });
     }, [dealers, searchQuery, ratingFilter]);
 
-    // Helper to generate tile layer using MapTiler raster endpoint
-    const createTileLayer = (style: MapTileStyle, key: string): L.TileLayer => {
+    // Helper to generate tile URL & config using MapTiler raster endpoint
+    const getTileConfig = (style: MapTileStyle, key: string) => {
         const cfg = MAP_STYLES[style] || MAP_STYLES.streets;
         const cleanKey = key.trim();
 
         if (cleanKey) {
-            return L.tileLayer(
-                `https://api.maptiler.com/maps/${cfg.mapId}/256/{z}/{x}/{y}.${cfg.format}?key=${encodeURIComponent(cleanKey)}`,
-                {
-                    maxZoom: cfg.maxZoom,
-                    attribution: MAPTILER_ATTRIBUTION,
-                    crossOrigin: true,
-                }
-            );
+            return {
+                url: `https://api.maptiler.com/maps/${cfg.mapId}/256/{z}/{x}/{y}.${cfg.format}?key=${encodeURIComponent(cleanKey)}`,
+                maxZoom: cfg.maxZoom,
+            };
         }
 
         // Graceful fallback when key is not provided yet so user doesn't see broken 403 tiles
-        return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        return {
+            url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
             maxZoom: 19,
-            attribution: '&copy; OpenStreetMap contributors',
-            subdomains: ['a', 'b', 'c'],
-        });
+        };
     };
 
     // Initialize Map Instance
     useEffect(() => {
-        if (!mapContainerRef.current || mapInstanceRef.current) return;
+        if (!isLeafletReady || !L || !mapContainerRef.current || mapInstanceRef.current) return;
+        const leaflet = L;
 
         // Default center on Lombok / NTB
-        const map = L.map(mapContainerRef.current, {
+        const map = leaflet.map(mapContainerRef.current, {
             center: [-8.65, 117.3],
             zoom: 9,
             zoomControl: false,
-            attributionControl: true,
+            attributionControl: false,
         });
 
         // Add Zoom Control to top-right
-        L.control.zoom({ position: 'topright' }).addTo(map);
+        leaflet.control.zoom({ position: 'topright' }).addTo(map);
 
         // Add Active MapTiler Tile Layer
-        const initialTile = createTileLayer(mapStyle, apiKey).addTo(map);
+        const tileConfig = getTileConfig(mapStyle, apiKey);
+        const initialTile = leaflet.tileLayer(tileConfig.url, {
+            maxZoom: tileConfig.maxZoom,
+            attribution: MAPTILER_ATTRIBUTION,
+            crossOrigin: true,
+        }).addTo(map);
+        initialTile.bringToBack();
         tileLayerRef.current = initialTile;
 
         // Create marker group
-        const markersLayer = L.layerGroup().addTo(map);
+        const markersLayer = leaflet.layerGroup().addTo(map);
         markersLayerRef.current = markersLayer;
         mapInstanceRef.current = map;
 
         return () => {
             map.remove();
             mapInstanceRef.current = null;
+            markersLayerRef.current = null;
+            tileLayerRef.current = null;
         };
-    }, []);
+    }, [isLeafletReady]);
 
     // Switch Tile Layer dynamically when mapStyle or apiKey changes
     useEffect(() => {
+        if (!isLeafletReady || !L) return;
         const map = mapInstanceRef.current;
         if (!map) return;
+        const leaflet = L;
 
-        if (tileLayerRef.current) {
-            map.removeLayer(tileLayerRef.current);
+        const tileConfig = getTileConfig(mapStyle, apiKey);
+
+        if (tileLayerRef.current && map.hasLayer(tileLayerRef.current)) {
+            tileLayerRef.current.setUrl(tileConfig.url);
+            tileLayerRef.current.options.maxZoom = tileConfig.maxZoom;
+        } else {
+            // Remove any old tile layers to prevent overlap
+            map.eachLayer((layer) => {
+                if (layer instanceof leaflet.TileLayer) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            const newTile = leaflet.tileLayer(tileConfig.url, {
+                maxZoom: tileConfig.maxZoom,
+                attribution: MAPTILER_ATTRIBUTION,
+                crossOrigin: true,
+            }).addTo(map);
+            newTile.bringToBack();
+            tileLayerRef.current = newTile;
         }
-
-        const newTile = createTileLayer(mapStyle, apiKey).addTo(map);
-        tileLayerRef.current = newTile;
-    }, [mapStyle, apiKey]);
+    }, [isLeafletReady, mapStyle, apiKey]);
 
     // Update Markers when dealers, selected dealer, or pinStyle changes
     useEffect(() => {
+        if (!isLeafletReady || !L) return;
+        const leaflet = L;
         const map = mapInstanceRef.current;
         const layer = markersLayerRef.current;
         if (!map || !layer) return;
 
         layer.clearLayers();
 
-        const latLngs: L.LatLngExpression[] = [];
-        let selectedMarker: L.Marker | null = null;
+        const latLngs: LTypes.LatLngExpression[] = [];
+        let selectedMarker: LTypes.Marker | null = null;
 
         filteredDealers.forEach((dealer) => {
             if (typeof dealer.latitude !== 'number' || typeof dealer.longitude !== 'number') {
@@ -616,8 +674,9 @@ export default function DealerMap({
 
             const isSelected = String(dealer.id) === String(selectedDealerId);
             const icon = createDealerPinIcon(dealer, isSelected, pinStyle);
+            if (!icon) return;
 
-            const marker = L.marker([dealer.latitude, dealer.longitude], {
+            const marker = leaflet.marker([dealer.latitude, dealer.longitude], {
                 icon,
                 title: `${dealer.kode_dealer} - ${dealer.nama_dealer}`,
                 zIndexOffset: isSelected ? 1000 : 0,
@@ -633,7 +692,7 @@ export default function DealerMap({
 
             marker.bindTooltip(hoverTooltipHtml, {
                 direction: 'auto',
-                offset: L.point(16, 0),
+                offset: leaflet.point(16, 0),
                 className: 'dealer-name-hover-tooltip',
                 opacity: 1,
                 sticky: false,
@@ -641,11 +700,11 @@ export default function DealerMap({
 
             // Rich HTML card using Popup (displayed to the side on click)
             const popupContent = buildDealerPopupHtml(dealer);
-            const popup = L.popup({
+            const popup = leaflet.popup({
                 autoPan: true,
-                autoPanPaddingTopLeft: L.point(30, 30),
-                autoPanPaddingBottomRight: L.point(30, 30),
-                offset: L.point(182, 100),
+                autoPanPaddingTopLeft: leaflet.point(30, 30),
+                autoPanPaddingBottomRight: leaflet.point(30, 30),
+                offset: leaflet.point(182, 100),
                 className: 'dealer-custom-leaflet-popup',
                 closeButton: true,
                 maxWidth: 320,
@@ -664,8 +723,8 @@ export default function DealerMap({
                 const isRightSide = point.x > mapWidth * 0.52;
 
                 popup.options.offset = isRightSide
-                    ? L.point(-182, 100) // open to the LEFT side of pin
-                    : L.point(182, 100);  // open to the RIGHT side of pin
+                    ? leaflet.point(-182, 100) // open to the LEFT side of pin
+                    : leaflet.point(182, 100);  // open to the RIGHT side of pin
 
                 popup.update();
             };
@@ -721,7 +780,7 @@ export default function DealerMap({
 
         // Fit bounds if multiple markers exist with generous padding
         if (latLngs.length > 0 && !selectedDealerId) {
-            map.fitBounds(L.latLngBounds(latLngs), {
+            map.fitBounds(leaflet.latLngBounds(latLngs), {
                 paddingTopLeft: [50, 100],
                 paddingBottomRight: [50, 60],
                 maxZoom: 13,
@@ -731,21 +790,22 @@ export default function DealerMap({
         return () => {
             map.off('popupclose', handlePopupClose);
         };
-    }, [filteredDealers, selectedDealerId, onSelectDealer, pinStyle]);
+    }, [isLeafletReady, filteredDealers, selectedDealerId, onSelectDealer, pinStyle]);
 
     // Handle Reset View
     const handleResetView = () => {
         const map = mapInstanceRef.current;
-        if (!map) return;
+        if (!map || !L) return;
+        const leaflet = L;
 
         map.closePopup();
 
         const validCoords = dealers
             .filter((d) => d.latitude && d.longitude)
-            .map((d) => [d.latitude, d.longitude] as L.LatLngExpression);
+            .map((d) => [d.latitude, d.longitude] as LTypes.LatLngExpression);
 
         if (validCoords.length > 0) {
-            map.fitBounds(L.latLngBounds(validCoords), {
+            map.fitBounds(leaflet.latLngBounds(validCoords), {
                 paddingTopLeft: [50, 100],
                 paddingBottomRight: [50, 60],
                 maxZoom: 13,
@@ -884,113 +944,124 @@ export default function DealerMap({
             </div>
 
 
-            {/* Map Style & Configuration Dialog Modal */}
-            <Dialog open={showStyleModal} onOpenChange={setShowStyleModal}>
-                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto p-5 sm:p-6">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-                            <Palette className="size-5 text-primary" />
-                            Desain & Model Peta MapTiler
-                        </DialogTitle>
-                        <DialogDescription className="text-xs sm:text-sm">
-                            Pilih gaya visual peta MapTiler dan bentuk pin showroom Honda.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    {/* Pilihan Model Peta MapTiler */}
-                    <div className="space-y-2 pt-1">
-                        <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                                Pilih Model Peta ({Object.keys(MAP_STYLES).length} Pilihan)
-                            </span>
-                            <span className="text-[11px] text-muted-foreground">
-                                Terpilih: <strong>{MAP_STYLES[mapStyle]?.name}</strong>
-                            </span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                            {(Object.keys(MAP_STYLES) as MapTileStyle[]).map((key) => {
-                                const style = MAP_STYLES[key];
-                                const isActive = mapStyle === key;
-                                return (
-                                    <button
-                                        key={key}
-                                        type="button"
-                                        onClick={() => handleSelectMapStyle(key)}
-                                        className={`flex items-start justify-between rounded-xl p-3 text-left transition-all cursor-pointer ${
-                                            isActive
-                                                ? 'bg-primary/10 text-foreground border-2 border-primary shadow-xs ring-1 ring-primary/30'
-                                                : 'bg-card hover:bg-muted/60 border text-foreground'
-                                        }`}
-                                    >
-                                        <div className="flex items-start gap-2.5">
-                                            <span className="text-2xl shrink-0 mt-0.5">{style.icon}</span>
-                                            <div>
-                                                <div className="text-xs font-semibold leading-tight flex items-center gap-1.5">
-                                                    <span>{style.name}</span>
-                                                    {isActive && (
-                                                        <Badge variant="default" className="text-[9.5px] h-4 px-1.5">Aktif</Badge>
-                                                    )}
-                                                </div>
-                                                <div className="text-[11px] text-muted-foreground mt-1 leading-snug">
-                                                    {style.description}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {isActive ? (
-                                            <div className="size-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 mt-0.5">
-                                                <Check className="size-3 stroke-[3]" />
-                                            </div>
-                                        ) : (
-                                            <div className="size-5 rounded-full border border-muted-foreground/30 shrink-0 mt-0.5" />
-                                        )}
-                                    </button>
-                                );
-                            })}
-                        </div>
+            {/* Map Style & Configuration Modal (Ant Design) */}
+            <AntModal
+                open={showStyleModal}
+                onCancel={() => setShowStyleModal(false)}
+                footer={null}
+                title={
+                    <div className="flex items-center gap-2 text-base font-semibold">
+                        <Palette className="size-5 text-primary" />
+                        <span>Desain & Model Peta MapTiler</span>
                     </div>
+                }
+                width={700}
+                centered
+            >
+                <p className="text-xs text-muted-foreground mb-4">
+                    Pilih gaya visual peta MapTiler dan bentuk pin showroom Honda.
+                </p>
 
-                    {/* Section 3: Bentuk Pin Marker Showroom */}
-                    <div className="space-y-2 pt-2 border-t">
+                {/* Pilihan Model Peta MapTiler */}
+                <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between">
                         <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            Bentuk Pin Marker Dealer Honda
+                            Pilih Model Peta ({Object.keys(MAP_STYLES).length} Pilihan)
                         </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            {[
-                                { id: 'capsule', name: 'Kapsul Modern', desc: 'Ramping, rating jelas, logo sayap Honda', icon: '💊' },
-                                { id: 'teardrop', name: 'Pin Teardrop', desc: 'Pin klasik ala Google Maps', icon: '📍' },
-                                { id: 'badge', name: 'Badge Showroom', desc: 'Badge kotak showroom dengan rating', icon: '🏷️' },
-                            ].map((p) => {
-                                const isActive = pinStyle === p.id;
-                                return (
-                                    <button
-                                        key={p.id}
-                                        type="button"
-                                        onClick={() => handleSelectPinStyle(p.id as MapPinStyle)}
-                                        className={`flex items-start justify-between rounded-xl p-3 text-left transition-all cursor-pointer ${
-                                            isActive
-                                                ? 'bg-primary/10 text-foreground border-2 border-primary shadow-xs'
-                                                : 'bg-card hover:bg-muted/60 border text-foreground'
-                                        }`}
-                                    >
-                                        <div className="flex items-start gap-2">
-                                            <span className="text-xl shrink-0 mt-0.5">{p.icon}</span>
-                                            <div>
-                                                <div className="text-xs font-semibold leading-tight">{p.name}</div>
-                                                <div className="text-[10.5px] text-muted-foreground mt-0.5 leading-tight">{p.desc}</div>
+                        <span className="text-[11px] text-muted-foreground">
+                            Terpilih: <strong>{MAP_STYLES[mapStyle]?.name}</strong>
+                        </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {(Object.keys(MAP_STYLES) as MapTileStyle[]).map((key) => {
+                            const style = MAP_STYLES[key];
+                            const isActive = mapStyle === key;
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => handleSelectMapStyle(key)}
+                                    className={`flex items-start justify-between rounded-xl p-3 text-left transition-all cursor-pointer ${
+                                        isActive
+                                            ? 'bg-primary/10 text-foreground border-2 border-primary shadow-xs ring-1 ring-primary/30'
+                                            : 'bg-card hover:bg-muted/60 border text-foreground'
+                                    }`}
+                                >
+                                    <div className="flex items-start gap-2.5">
+                                        <span className="text-2xl shrink-0 mt-0.5">{style.icon}</span>
+                                        <div>
+                                            <div className="text-xs font-semibold leading-tight flex items-center gap-1.5">
+                                                <span>{style.name}</span>
+                                                {isActive && (
+                                                    <AntTag color="error" className="text-[9.5px] leading-tight px-1.5 py-0 rounded m-0">Aktif</AntTag>
+                                                )}
+                                            </div>
+                                            <div className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                                                {style.description}
                                             </div>
                                         </div>
-                                        {isActive && <Check className="size-4 text-primary shrink-0 mt-0.5" />}
-                                    </button>
-                                );
-                            })}
-                        </div>
+                                    </div>
+                                    {isActive ? (
+                                        <div className="size-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 mt-0.5">
+                                            <Check className="size-3 stroke-[3]" />
+                                        </div>
+                                    ) : (
+                                        <div className="size-5 rounded-full border border-muted-foreground/30 shrink-0 mt-0.5" />
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
-                </DialogContent>
-            </Dialog>
+                </div>
+
+                {/* Section 2: Bentuk Pin Marker Showroom */}
+                <div className="space-y-2 pt-4 mt-3 border-t">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        Bentuk Pin Marker Dealer Honda
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {[
+                            { id: 'capsule', name: 'Kapsul Modern', desc: 'Ramping, rating jelas, logo sayap Honda', icon: '💊' },
+                            { id: 'teardrop', name: 'Pin Teardrop', desc: 'Pin klasik ala Google Maps', icon: '📍' },
+                            { id: 'badge', name: 'Badge Showroom', desc: 'Badge kotak showroom dengan rating', icon: '🏷️' },
+                        ].map((p) => {
+                            const isActive = pinStyle === p.id;
+                            return (
+                                <button
+                                    key={p.id}
+                                    type="button"
+                                    onClick={() => handleSelectPinStyle(p.id as MapPinStyle)}
+                                    className={`flex items-start justify-between rounded-xl p-3 text-left transition-all cursor-pointer ${
+                                        isActive
+                                            ? 'bg-primary/10 text-foreground border-2 border-primary shadow-xs'
+                                            : 'bg-card hover:bg-muted/60 border text-foreground'
+                                    }`}
+                                >
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-xl shrink-0 mt-0.5">{p.icon}</span>
+                                        <div>
+                                            <div className="text-xs font-semibold leading-tight">{p.name}</div>
+                                            <div className="text-[10.5px] text-muted-foreground mt-0.5 leading-tight">{p.desc}</div>
+                                        </div>
+                                    </div>
+                                    {isActive && <Check className="size-4 text-primary shrink-0 mt-0.5" />}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            </AntModal>
 
             {/* Map Canvas with generous height */}
             <div className="relative flex-1 min-h-[520px] lg:min-h-[580px] w-full bg-muted/20">
                 <div ref={mapContainerRef} className="absolute inset-0 size-full z-0" />
+
+                {!isLeafletReady && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-muted/30 backdrop-blur-[2px] text-muted-foreground">
+                        <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        <span className="text-xs font-medium">Memuat peta showroom...</span>
+                    </div>
+                )}
 
                 {/* Legend Overlay at bottom-left */}
                 <div className="absolute bottom-3 left-3 z-10 flex flex-wrap items-center gap-2.5 rounded-lg border bg-background/90 px-3 py-1.5 text-[11px] font-medium shadow-md backdrop-blur-xs text-muted-foreground">

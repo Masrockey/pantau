@@ -38,6 +38,7 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'maptilerApiKey' => (string) config('services.maptiler.key', 'Ky456DhoOJH2nIXinbxJ'),
             'auth' => [
                 'user' => $request->user()?->loadMissing('dealer'),
             ],

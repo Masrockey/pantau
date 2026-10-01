@@ -18,6 +18,12 @@ import {
 import React, { useState } from 'react';
 import InputError from '@/components/input-error';
 import { Pagination } from '@/components/pagination';
+import {
+    Button as AntButton,
+    Input as AntInput,
+    Popconfirm as AntPopconfirm,
+    Tag as AntTag,
+} from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -288,49 +294,44 @@ export default function DealersIndex({
 
                     {canManageAll && (
                         <div className="flex flex-wrap items-center gap-2">
-                            <Button
-                                variant="outline"
+                            <AntButton
                                 onClick={handleOpenImport}
-                                className="shrink-0 gap-2 border-emerald-600/30 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-500/30 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                                icon={<Upload className="size-3.5 text-emerald-600 dark:text-emerald-400" />}
+                                className="border-emerald-600/30 text-emerald-700 dark:text-emerald-400 font-medium"
                             >
-                                <Upload className="size-4 text-emerald-600 dark:text-emerald-400" />
                                 Import Excel
-                            </Button>
-                            <Button
+                            </AntButton>
+                            <AntButton
+                                type="primary"
                                 onClick={handleOpenCreate}
-                                className="shrink-0 gap-2"
+                                icon={<Plus className="size-3.5" />}
+                                className="font-medium"
                             >
-                                <Plus className="size-4" />
                                 Tambah Dealer
-                            </Button>
+                            </AntButton>
                         </div>
                     )}
                 </div>
 
                 {/* Filter and Search Bar */}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <form
-                        onSubmit={handleSearch}
-                        className="relative max-w-md flex-1"
-                    >
-                        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                            type="text"
+                    <div className="max-w-md flex-1">
+                        <AntInput.Search
                             placeholder="Cari kode, nama, alamat, kelurahan, atau no telp..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            className="pr-8 pl-9"
+                            onSearch={() => {
+                                router.get(
+                                    dealersRoute.index.url(),
+                                    { search: search || undefined },
+                                    { preserveState: true, replace: true },
+                                );
+                            }}
+                            allowClear
+                            onClear={handleClearSearch}
+                            enterButton="Cari"
                         />
-                        {search && (
-                            <button
-                                type="button"
-                                onClick={handleClearSearch}
-                                className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                            >
-                                <X className="size-4" />
-                            </button>
-                        )}
-                    </form>
+                    </div>
 
                     <div className="text-xs text-muted-foreground">
                         Total:{' '}
@@ -439,12 +440,9 @@ export default function DealersIndex({
                                                     {rowNumber}
                                                 </td>
                                                 <td className="px-3 py-3.5 font-medium whitespace-nowrap">
-                                                    <Badge
-                                                        variant="outline"
-                                                        className="font-mono tracking-wide"
-                                                    >
+                                                    <AntTag className="font-mono tracking-wide">
                                                         {dealer.kode_dealer}
-                                                    </Badge>
+                                                    </AntTag>
                                                 </td>
                                                 <td className="px-3 py-3.5 font-medium whitespace-nowrap text-foreground">
                                                     {dealer.nama_dealer}
@@ -602,40 +600,33 @@ export default function DealersIndex({
                                                     )}
                                                 </td>
                                                 <td className="px-3 py-3.5 text-right whitespace-nowrap">
-                                                    <div className="flex items-center justify-end gap-1.5">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                handleOpenEdit(
-                                                                    dealer,
-                                                                )
-                                                            }
-                                                            className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <AntButton
+                                                            type="text"
+                                                            size="small"
+                                                            onClick={() => handleOpenEdit(dealer)}
+                                                            icon={<Edit2 className="size-3.5" />}
                                                             title="Edit Dealer"
-                                                        >
-                                                            <Edit2 className="size-3.5" />
-                                                            <span className="sr-only">
-                                                                Edit
-                                                            </span>
-                                                        </Button>
+                                                        />
                                                         {canManageAll && (
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={() =>
-                                                                    handleOpenDelete(
-                                                                        dealer,
-                                                                    )
-                                                                }
-                                                                className="h-8 px-2 text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
-                                                                title="Hapus Dealer"
+                                                            <AntPopconfirm
+                                                                title="Hapus Dealer?"
+                                                                description={`Yakin ingin menghapus ${dealer.nama_dealer}?`}
+                                                                onConfirm={() => {
+                                                                    router.delete(dealersRoute.destroy.url(dealer.id));
+                                                                }}
+                                                                okText="Ya, Hapus"
+                                                                cancelText="Batal"
+                                                                okButtonProps={{ danger: true }}
                                                             >
-                                                                <Trash2 className="size-3.5" />
-                                                                <span className="sr-only">
-                                                                    Hapus
-                                                                </span>
-                                                            </Button>
+                                                                <AntButton
+                                                                    type="text"
+                                                                    size="small"
+                                                                    danger
+                                                                    icon={<Trash2 className="size-3.5" />}
+                                                                    title="Hapus Dealer"
+                                                                />
+                                                            </AntPopconfirm>
                                                         )}
                                                     </div>
                                                 </td>

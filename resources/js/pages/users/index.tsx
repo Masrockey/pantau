@@ -13,6 +13,13 @@ import {
     X,
 } from 'lucide-react';
 import React, { useState } from 'react';
+import {
+    Button as AntButton,
+    Input as AntInput,
+    Popconfirm as AntPopconfirm,
+    Select as AntSelect,
+    Tag as AntTag,
+} from 'antd';
 import InputError from '@/components/input-error';
 import { Pagination } from '@/components/pagination';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -207,34 +214,34 @@ export default function UsersIndex({
         switch (role) {
             case 'super_admin':
                 return (
-                    <Badge
-                        variant="outline"
-                        className="border-purple-300 bg-purple-50 font-medium text-purple-700 dark:border-purple-800 dark:bg-purple-950/50 dark:text-purple-300"
+                    <AntTag
+                        color="purple"
+                        className="inline-flex items-center gap-1 font-medium"
                     >
-                        <Shield className="mr-1 size-3" />
+                        <Shield className="size-3" />
                         Super Admin
-                    </Badge>
+                    </AntTag>
                 );
             case 'main_dealer':
                 return (
-                    <Badge
-                        variant="outline"
-                        className="border-blue-300 bg-blue-50 font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-300"
+                    <AntTag
+                        color="blue"
+                        className="inline-flex items-center gap-1 font-medium"
                     >
-                        <Building2 className="mr-1 size-3" />
+                        <Building2 className="size-3" />
                         Main Dealer
-                    </Badge>
+                    </AntTag>
                 );
             case 'dealer':
             default:
                 return (
-                    <Badge
-                        variant="outline"
-                        className="border-emerald-300 bg-emerald-50 font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300"
+                    <AntTag
+                        color="success"
+                        className="inline-flex items-center gap-1 font-medium"
                     >
-                        <UserCheck className="mr-1 size-3" />
+                        <UserCheck className="size-3" />
                         Dealer
-                    </Badge>
+                    </AntTag>
                 );
         }
     };
@@ -265,13 +272,14 @@ export default function UsersIndex({
                         </p>
                     </div>
 
-                    <Button
+                    <AntButton
+                        type="primary"
                         onClick={handleOpenCreate}
-                        className="shrink-0 gap-2"
+                        icon={<Plus className="size-4" />}
+                        className="shrink-0"
                     >
-                        <Plus className="size-4" />
                         Tambah User
-                    </Button>
+                    </AntButton>
                 </div>
 
                 {/* Filter and Search Section */}
@@ -283,90 +291,99 @@ export default function UsersIndex({
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
                         {/* Search Input */}
-                        <form
-                            onSubmit={handleSearchSubmit}
+                        <div
                             className={cn(
-                                'relative',
                                 canManageAll
                                     ? 'sm:col-span-2 md:col-span-2'
                                     : 'col-span-full',
                             )}
                         >
-                            <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                                type="text"
+                            <AntInput.Search
                                 placeholder="Cari nama atau email pengguna..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                className="pr-8 pl-9"
+                                onSearch={(val) => {
+                                    applyFilters({
+                                        search: val,
+                                        role: roleFilter,
+                                        dealer_id: dealerFilter,
+                                    });
+                                }}
+                                allowClear
+                                className="w-full"
                             />
-                            {search && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setSearch('');
-                                        applyFilters({
-                                            search: '',
-                                            role: roleFilter,
-                                            dealer_id: dealerFilter,
-                                        });
-                                    }}
-                                    className="absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                                >
-                                    <X className="size-4" />
-                                </button>
-                            )}
-                        </form>
+                        </div>
 
                         {canManageAll && (
                             <>
                                 {/* Filter Role */}
                                 <div>
-                                    <select
-                                        value={roleFilter}
-                                        onChange={handleRoleChange}
-                                        className={selectClass}
-                                        aria-label="Filter Role"
-                                    >
-                                        <option value="">Semua Role</option>
-                                        {roles.map((r) => (
-                                            <option key={r.value} value={r.value}>
-                                                {r.label}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <AntSelect
+                                        placeholder="Semua Role"
+                                        value={roleFilter || undefined}
+                                        onChange={(val) => {
+                                            const nextVal = val ?? '';
+                                            setRoleFilter(nextVal);
+                                            applyFilters({
+                                                search,
+                                                role: nextVal,
+                                                dealer_id: dealerFilter,
+                                            });
+                                        }}
+                                        allowClear
+                                        className="w-full"
+                                        options={[
+                                            { value: '', label: 'Semua Role' },
+                                            ...roles.map((r) => ({
+                                                value: r.value,
+                                                label: r.label,
+                                            })),
+                                        ]}
+                                    />
                                 </div>
 
                                 {/* Filter Dealer */}
                                 <div>
-                                    <select
-                                        value={dealerFilter}
-                                        onChange={handleDealerChange}
-                                        className={selectClass}
-                                        aria-label="Filter Dealer"
-                                    >
-                                        <option value="">Semua Dealer</option>
-                                        {dealers.map((d) => (
-                                            <option key={d.id} value={d.id}>
-                                                {d.kode_dealer} - {d.nama_dealer}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <AntSelect
+                                        showSearch
+                                        optionFilterProp="label"
+                                        placeholder="Semua Dealer"
+                                        value={dealerFilter || undefined}
+                                        onChange={(val) => {
+                                            const nextVal = val ?? '';
+                                            setDealerFilter(nextVal);
+                                            applyFilters({
+                                                search,
+                                                role: roleFilter,
+                                                dealer_id: nextVal,
+                                            });
+                                        }}
+                                        allowClear
+                                        className="w-full"
+                                        options={[
+                                            { value: '', label: 'Semua Dealer' },
+                                            ...dealers.map((d) => ({
+                                                value: String(d.id),
+                                                label: `${d.kode_dealer} - ${d.nama_dealer}`,
+                                            })),
+                                        ]}
+                                    />
                                 </div>
                             </>
                         )}
                     </div>
 
                     {hasActiveFilters && (
-                        <div className="flex items-center justify-between border-t border-sidebar-border/50 pt-3 text-xs text-muted-foreground dark:border-sidebar-border">
+                        <div className="flex items-center justify-between border-t border-sidebar-border/50 pt-2 text-xs text-muted-foreground dark:border-sidebar-border">
                             <span>Filter aktif diterapkan</span>
-                            <button
-                                type="button"
+                            <AntButton
+                                type="link"
+                                size="small"
                                 onClick={handleResetFilters}
-                                className="font-medium text-primary hover:underline"
+                                className="p-0 font-medium"
                             >
                                 Reset Semua Filter
-                            </button>
+                            </AntButton>
                         </div>
                     )}
                 </div>
@@ -526,48 +543,52 @@ export default function UsersIndex({
                                                 </td>
                                                 <td className="px-4 py-3.5 text-right">
                                                     <div className="flex items-center justify-end gap-1.5">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
+                                                        <AntButton
+                                                            type="text"
+                                                            size="small"
                                                             onClick={() =>
                                                                 handleOpenEdit(
                                                                     user,
                                                                 )
                                                             }
-                                                            className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                                                            icon={<Edit2 className="size-3.5" />}
+                                                            className="text-muted-foreground hover:text-foreground"
                                                             title="Edit User"
-                                                        >
-                                                            <Edit2 className="size-3.5" />
-                                                            <span className="sr-only">
-                                                                Edit
-                                                            </span>
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                handleOpenDelete(
-                                                                    user,
-                                                                )
-                                                            }
-                                                            disabled={isSelf}
-                                                            className={cn(
-                                                                'h-8 px-2',
-                                                                isSelf
-                                                                    ? 'cursor-not-allowed opacity-40'
-                                                                    : 'text-destructive/80 hover:bg-destructive/10 hover:text-destructive',
-                                                            )}
-                                                            title={
-                                                                isSelf
-                                                                    ? 'Tidak dapat menghapus akun sendiri'
-                                                                    : 'Hapus User'
-                                                            }
-                                                        >
-                                                            <Trash2 className="size-3.5" />
-                                                            <span className="sr-only">
-                                                                Hapus
-                                                            </span>
-                                                        </Button>
+                                                        />
+                                                        {isSelf ? (
+                                                            <AntButton
+                                                                type="text"
+                                                                size="small"
+                                                                disabled
+                                                                icon={<Trash2 className="size-3.5" />}
+                                                                title="Tidak dapat menghapus akun sendiri"
+                                                            />
+                                                        ) : (
+                                                            <AntPopconfirm
+                                                                title="Hapus Pengguna"
+                                                                description={`Yakin ingin menghapus ${user.name}?`}
+                                                                onConfirm={() => {
+                                                                    router.delete(
+                                                                        usersRoute.destroy.url(
+                                                                            user.id,
+                                                                        ),
+                                                                    );
+                                                                }}
+                                                                okText="Ya, Hapus"
+                                                                cancelText="Batal"
+                                                                okButtonProps={{
+                                                                    danger: true,
+                                                                }}
+                                                            >
+                                                                <AntButton
+                                                                    type="text"
+                                                                    size="small"
+                                                                    danger
+                                                                    icon={<Trash2 className="size-3.5" />}
+                                                                    title="Hapus User"
+                                                                />
+                                                            </AntPopconfirm>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>

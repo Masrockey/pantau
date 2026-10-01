@@ -14,6 +14,7 @@ import {
     Star,
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
+import { Select as AntSelect, Button as AntButton, Tag as AntTag } from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -158,17 +159,19 @@ export default function RatingSimulasi({
                             <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap hidden md:inline">
                                 Pilih Dealer:
                             </span>
-                            <select
+                            <AntSelect
+                                showSearch
+                                optionFilterProp="label"
                                 value={selectedDealerId}
-                                onChange={handleDealerChange}
-                                className="h-9 max-w-[280px] sm:max-w-[340px] truncate rounded-md border border-input bg-background px-3 py-1 text-xs font-semibold shadow-2xs focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
-                            >
-                                {dealers.map((d) => (
-                                    <option key={d.id} value={d.id}>
-                                        {d.nama_dealer} ({d.kode_dealer})
-                                    </option>
-                                ))}
-                            </select>
+                                onChange={(val) => {
+                                    if (val) setSelectedDealerId(Number(val));
+                                }}
+                                className="w-[280px] sm:w-[340px]"
+                                options={dealers.map((d) => ({
+                                    value: d.id,
+                                    label: `${d.nama_dealer} (${d.kode_dealer})`,
+                                }))}
+                            />
                         </div>
                     )}
                 </div>

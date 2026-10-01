@@ -40,6 +40,16 @@ import {
     ReviewWordCloud,
     WordCloudItem,
 } from '@/components/dashboard/review-word-cloud';
+import {
+    Card as AntCard,
+    Pagination as AntPagination,
+    Progress as AntProgress,
+    Rate as AntRate,
+    Select as AntSelect,
+    Statistic,
+    Tag as AntTag,
+    Tooltip as AntTooltip,
+} from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -153,8 +163,7 @@ export default function Dashboard({
     isGlobal,
     userRole,
 }: DashboardProps) {
-    const handleDealerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const value = e.target.value;
+    const handleDealerChange = (value: string) => {
         router.get(
             dashboard(),
             value ? { dealer_id: value } : {},
@@ -184,13 +193,13 @@ export default function Dashboard({
     const getRoleBadge = (role: string) => {
         switch (role) {
             case 'super_admin':
-                return <Badge className="bg-purple-600 hover:bg-purple-700">Super Admin</Badge>;
+                return <AntTag color="purple" className="font-semibold text-xs px-2.5 py-0.5 rounded-full border-0">Super Admin</AntTag>;
             case 'main_dealer':
-                return <Badge className="bg-blue-600 hover:bg-blue-700">Main Dealer</Badge>;
+                return <AntTag color="blue" className="font-semibold text-xs px-2.5 py-0.5 rounded-full border-0">Main Dealer</AntTag>;
             case 'dealer':
-                return <Badge variant="secondary">Dealer</Badge>;
+                return <AntTag color="default" className="font-semibold text-xs px-2.5 py-0.5 rounded-full">Dealer</AntTag>;
             default:
-                return <Badge variant="outline">{role}</Badge>;
+                return <AntTag className="font-semibold text-xs px-2.5 py-0.5 rounded-full">{role}</AntTag>;
         }
     };
 
@@ -216,19 +225,24 @@ export default function Dashboard({
                     <div className="flex flex-wrap items-center gap-2">
                         {isGlobal && dealersList.length > 0 && (
                             <div className="flex items-center gap-2">
-                                <Filter className="size-4 text-muted-foreground" />
-                                <select
-                                    value={selectedDealerId}
+                                <AntSelect
+                                    showSearch
+                                    value={selectedDealerId || ''}
                                     onChange={handleDealerChange}
-                                    className={`${selectClass} w-52 sm:w-64 text-xs font-medium`}
-                                >
-                                    <option value="">Semua Showroom ({dealersList.length})</option>
-                                    {dealersList.map((d) => (
-                                        <option key={d.id} value={String(d.id)}>
-                                            {d.kode_dealer} - {d.nama_dealer}
-                                        </option>
-                                    ))}
-                                </select>
+                                    placeholder="Semua Showroom"
+                                    className="w-56 sm:w-72"
+                                    size="middle"
+                                    filterOption={(input, option) =>
+                                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                                    }
+                                    options={[
+                                        { value: '', label: `Semua Showroom (${dealersList.length})` },
+                                        ...dealersList.map((d) => ({
+                                            value: String(d.id),
+                                            label: `${d.kode_dealer} - ${d.nama_dealer}`,
+                                        })),
+                                    ]}
+                                />
                             </div>
                         )}
 
@@ -278,92 +292,100 @@ export default function Dashboard({
                     </div>
                 )}
 
-                {/* KPI Metrics Summary Cards */}
+                {/* KPI Metrics Summary Cards - Ant Design Aesthetic */}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 md:gap-4">
                     {/* Total Reviews */}
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xs font-medium text-muted-foreground">
-                                Total Ulasan Masuk
-                            </CardTitle>
-                            <MessageSquare className="size-4 text-muted-foreground" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold tracking-tight">
-                                {metrics.total_reviews.toLocaleString('id-ID')}
-                            </div>
-                            <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                                <TrendingUp className="size-3.5" />
-                                <span>{posPct}% sentimen positif</span>
-                            </div>
-                        </CardContent>
-                    </Card>
+                    <AntCard size="small" hoverable className="ant-card">
+                        <Statistic
+                            title={
+                                <span className="text-xs text-muted-foreground font-medium flex items-center justify-between">
+                                    Total Ulasan Masuk
+                                    <MessageSquare className="size-4 text-muted-foreground" />
+                                </span>
+                            }
+                            value={metrics.total_reviews}
+                            formatter={(val) => Number(val).toLocaleString('id-ID')}
+                            valueStyle={{ fontWeight: 700, fontSize: '1.65rem' }}
+                        />
+                        <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                            <TrendingUp className="size-3.5" />
+                            <span>{posPct}% sentimen positif</span>
+                        </div>
+                    </AntCard>
 
                     {/* Google Star Rating */}
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xs font-medium text-muted-foreground">
-                                Rata-rata Rating Google
-                            </CardTitle>
-                            <Star className="size-4 fill-amber-400 text-amber-500" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-baseline gap-1">
-                                <div className="text-2xl font-bold tracking-tight text-amber-500">
-                                    ★ {metrics.avg_rating > 0 ? metrics.avg_rating.toFixed(1) : '-'}
-                                </div>
-                                <span className="text-xs text-muted-foreground">/ 5.0</span>
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                                Dari total ulasan Google Maps
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <AntCard size="small" hoverable className="ant-card">
+                        <Statistic
+                            title={
+                                <span className="text-xs text-muted-foreground font-medium flex items-center justify-between">
+                                    Rata-rata Rating Google
+                                    <Star className="size-4 fill-amber-400 text-amber-500" />
+                                </span>
+                            }
+                            value={metrics.avg_rating > 0 ? metrics.avg_rating.toFixed(1) : '-'}
+                            suffix={<span className="text-xs text-muted-foreground font-normal">/ 5.0</span>}
+                            valueStyle={{ fontWeight: 700, fontSize: '1.65rem', color: '#f59e0b' }}
+                        />
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            Dari total ulasan Google Maps
+                        </p>
+                    </AntCard>
 
                     {/* Response Rate */}
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xs font-medium text-muted-foreground">
-                                Respons Owner Dealer
-                            </CardTitle>
-                            <CheckCircle2 className="size-4 text-emerald-500" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
-                                {metrics.response_rate}%
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                                {metrics.responded_count.toLocaleString('id-ID')} ulasan telah dijawab
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <AntCard size="small" hoverable className="ant-card">
+                        <Statistic
+                            title={
+                                <span className="text-xs text-muted-foreground font-medium flex items-center justify-between">
+                                    Respons Owner Dealer
+                                    <CheckCircle2 className="size-4 text-emerald-500" />
+                                </span>
+                            }
+                            value={metrics.response_rate}
+                            suffix={<span className="text-xs text-muted-foreground font-normal">%</span>}
+                            valueStyle={{ fontWeight: 700, fontSize: '1.65rem', color: '#10b981' }}
+                        />
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            {metrics.responded_count.toLocaleString('id-ID')} ulasan telah dijawab
+                        </p>
+                    </AntCard>
 
                     {/* Pending Response (Action Required) */}
-                    <Card className={metrics.unresponded_count > 0 ? 'border-amber-500/40 bg-amber-500/5 dark:bg-amber-950/10' : ''}>
-                        <CardHeader className="flex flex-row items-center justify-between pb-2">
-                            <CardTitle className="text-xs font-medium text-muted-foreground">
-                                Belum Ditanggapi
-                            </CardTitle>
-                            <AlertCircle className={`size-4 ${metrics.unresponded_count > 0 ? 'text-amber-500' : 'text-muted-foreground'}`} />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="flex items-center justify-between">
-                                <div className={`text-2xl font-bold tracking-tight ${metrics.unresponded_count > 0 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-                                    {metrics.unresponded_count.toLocaleString('id-ID')}
-                                </div>
-                                {metrics.unresponded_count > 0 && (
-                                    <Button variant="ghost" size="sm" asChild className="h-7 px-2 text-xs gap-1 text-amber-600 hover:text-amber-700 dark:text-amber-400">
-                                        <Link href={reviewsRoute.index.url({ query: { respon_from_owner: 'false' } })}>
-                                            Balas <ArrowRight className="size-3" />
-                                        </Link>
-                                    </Button>
-                                )}
-                            </div>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                                {metrics.unresponded_count > 0 ? 'Perlu tindakan tanggapan dealer' : 'Semua ulasan telah direspons'}
-                            </p>
-                        </CardContent>
-                    </Card>
+                    <AntCard
+                        size="small"
+                        hoverable
+                        className={`ant-card ${metrics.unresponded_count > 0 ? 'border-amber-500/50 bg-amber-50/20 dark:bg-amber-950/10' : ''}`}
+                    >
+                        <div className="flex items-start justify-between">
+                            <Statistic
+                                title={
+                                    <span className="text-xs text-muted-foreground font-medium">
+                                        Belum Ditanggapi
+                                    </span>
+                                }
+                                value={metrics.unresponded_count}
+                                formatter={(val) => Number(val).toLocaleString('id-ID')}
+                                valueStyle={{
+                                    fontWeight: 700,
+                                    fontSize: '1.65rem',
+                                    color: metrics.unresponded_count > 0 ? '#d97706' : undefined,
+                                }}
+                            />
+                            <AlertCircle className={`size-4 mt-1 ${metrics.unresponded_count > 0 ? 'text-amber-500' : 'text-muted-foreground'}`} />
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">
+                                {metrics.unresponded_count > 0 ? 'Perlu tindakan dealer' : 'Semua telah direspons'}
+                            </span>
+                            {metrics.unresponded_count > 0 && (
+                                <Link
+                                    href={reviewsRoute.index.url({ query: { respon_from_owner: 'false' } })}
+                                    className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-0.5"
+                                >
+                                    Balas <ArrowRight className="size-3" />
+                                </Link>
+                            )}
+                        </div>
+                    </AntCard>
                 </div>
 
                 {/* Dealer Pin Point Map Section */}
@@ -377,7 +399,7 @@ export default function Dashboard({
                 {/* Middle Grid: Rating Breakdown & Response SLA */}
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
                     {/* Rating Distribution (7 Columns) */}
-                    <Card className="lg:col-span-7 flex flex-col">
+                    <Card className="lg:col-span-7 flex flex-col ant-card">
                         <CardHeader>
                             <CardTitle className="text-base flex items-center gap-2">
                                 <Star className="size-4 text-amber-500 fill-amber-400" />
@@ -392,12 +414,12 @@ export default function Dashboard({
                                 {[5, 4, 3, 2, 1].map((star) => {
                                     const count = ratingCounts[star as keyof typeof ratingCounts] || 0;
                                     const percentage = metrics.total_reviews > 0 ? Math.round((count / metrics.total_reviews) * 100) : 0;
-                                    const barColor =
+                                    const strokeColor =
                                         star >= 4
-                                            ? 'bg-emerald-500'
+                                            ? '#52c41a'
                                             : star === 3
-                                              ? 'bg-amber-400'
-                                              : 'bg-rose-500';
+                                              ? '#faad14'
+                                              : '#ff4d4f';
 
                                     return (
                                         <div key={star} className="flex items-center gap-3 text-xs">
@@ -405,10 +427,12 @@ export default function Dashboard({
                                                 <span>{star}</span>
                                                 <Star className="size-3 fill-amber-400 text-amber-500" />
                                             </div>
-                                            <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-muted">
-                                                <div
-                                                    className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-                                                    style={{ width: `${percentage}%` }}
+                                            <div className="w-full">
+                                                <AntProgress
+                                                    percent={percentage}
+                                                    strokeColor={strokeColor}
+                                                    size="small"
+                                                    showInfo={false}
                                                 />
                                             </div>
                                             <div className="flex w-24 justify-end gap-1.5 font-mono text-muted-foreground shrink-0">
@@ -439,7 +463,7 @@ export default function Dashboard({
                     </Card>
 
                     {/* Tanggapan Owner & Quick Links (5 Columns) */}
-                    <Card className="lg:col-span-5 flex flex-col">
+                    <Card className="lg:col-span-5 flex flex-col ant-card">
                         <CardHeader>
                             <CardTitle className="text-base flex items-center gap-2">
                                 <CheckCircle2 className="size-4 text-primary" />
@@ -458,12 +482,12 @@ export default function Dashboard({
                                             {metrics.response_rate}%
                                         </span>
                                     </div>
-                                    <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
-                                        <div
-                                            className="h-full bg-emerald-500 transition-all duration-500"
-                                            style={{ width: `${metrics.response_rate}%` }}
-                                        />
-                                    </div>
+                                    <AntProgress
+                                        percent={metrics.response_rate}
+                                        strokeColor="#52c41a"
+                                        size={['100%', 10]}
+                                        status="active"
+                                    />
                                     <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
                                         <span className="flex items-center gap-1.5">
                                             <span className="size-2 rounded-full bg-emerald-500" />
@@ -790,39 +814,14 @@ export default function Dashboard({
                                         <span className="font-medium text-foreground">{Math.min(attentionPage * attentionPageSize, needsAttentionDealers.length)}</span> dari{' '}
                                         <span className="font-medium text-foreground">{needsAttentionDealers.length}</span> showroom
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setAttentionPage((p) => Math.max(p - 1, 1))}
-                                            disabled={attentionPage === 1}
-                                            className="h-7 w-7 p-0 cursor-pointer"
-                                            title="Halaman Sebelumnya"
-                                        >
-                                            <ChevronLeft className="size-3.5" />
-                                        </Button>
-                                        {Array.from({ length: totalAttentionPages }, (_, i) => i + 1).map((pageNum) => (
-                                            <Button
-                                                key={pageNum}
-                                                variant={attentionPage === pageNum ? 'default' : 'outline'}
-                                                size="sm"
-                                                onClick={() => setAttentionPage(pageNum)}
-                                                className="h-7 w-7 p-0 text-xs font-medium cursor-pointer"
-                                            >
-                                                {pageNum}
-                                            </Button>
-                                        ))}
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setAttentionPage((p) => Math.min(p + 1, totalAttentionPages))}
-                                            disabled={attentionPage === totalAttentionPages}
-                                            className="h-7 w-7 p-0 cursor-pointer"
-                                            title="Halaman Berikutnya"
-                                        >
-                                            <ChevronRight className="size-3.5" />
-                                        </Button>
-                                    </div>
+                                    <AntPagination
+                                        size="small"
+                                        current={attentionPage}
+                                        onChange={(p) => setAttentionPage(p)}
+                                        total={needsAttentionDealers.length}
+                                        pageSize={attentionPageSize}
+                                        showSizeChanger={false}
+                                    />
                                 </CardFooter>
                             )}
                         </Card>

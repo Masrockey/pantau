@@ -16,6 +16,12 @@ import {
     XCircle,
 } from 'lucide-react';
 import React from 'react';
+import {
+    Button as AntButton,
+    Input as AntInput,
+    Select as AntSelect,
+    Tag as AntTag,
+} from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -330,51 +336,44 @@ export function GmbCluster({ dealers = [], summary = null }: GmbClusterProps) {
 
                 {/* Table Controls / Search & Zone Filters */}
                 <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-muted/20 border-b text-xs">
-                    <div className="relative flex-1 min-w-[200px] max-w-md">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                        <input
-                            type="text"
+                    <div className="flex-1 min-w-[200px] max-w-md">
+                        <AntInput
                             placeholder="Cari nama dealer atau kode dealer..."
                             value={searchQuery}
+                            prefix={<Search className="size-3.5 text-muted-foreground" />}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="h-8.5 w-full rounded-md border border-input bg-background pl-8 pr-7 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                            allowClear
+                            className="w-full"
                         />
-                        {searchQuery && (
-                            <button
-                                onClick={() => setSearchQuery('')}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer text-sm font-bold"
-                            >
-                                ×
-                            </button>
-                        )}
                     </div>
 
                     <div className="flex items-center gap-2">
                         <span className="text-xs font-medium text-muted-foreground hidden sm:inline">
                             Filter Zona:
                         </span>
-                        <select
+                        <AntSelect
                             value={selectedZoneFilter}
-                            onChange={(e) => setSelectedZoneFilter(e.target.value as ClusterZoneType | 'ALL')}
-                            className="h-8.5 rounded-md border border-input bg-background px-3 text-xs font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary"
-                        >
-                            <option value="ALL">Semua Cluster ({dealers.length})</option>
-                            <option value="EXCELLENT ZONE">Excellent Zone ({computedSummary.zones['EXCELLENT ZONE'].count})</option>
-                            <option value="VOLUME ZONE">Volume Zone ({computedSummary.zones['VOLUME ZONE'].count})</option>
-                            <option value="IMPROVEMENT ZONE">Improvement Zone ({computedSummary.zones['IMPROVEMENT ZONE'].count})</option>
-                            <option value="QUALITY ZONE">Quality Zone ({computedSummary.zones['QUALITY ZONE'].count})</option>
-                        </select>
+                            onChange={(val) => setSelectedZoneFilter(val as ClusterZoneType | 'ALL')}
+                            className="w-56"
+                            options={[
+                                { value: 'ALL', label: `Semua Cluster (${dealers.length})` },
+                                { value: 'EXCELLENT ZONE', label: `Excellent Zone (${computedSummary.zones['EXCELLENT ZONE'].count})` },
+                                { value: 'VOLUME ZONE', label: `Volume Zone (${computedSummary.zones['VOLUME ZONE'].count})` },
+                                { value: 'IMPROVEMENT ZONE', label: `Improvement Zone (${computedSummary.zones['IMPROVEMENT ZONE'].count})` },
+                                { value: 'QUALITY ZONE', label: `Quality Zone (${computedSummary.zones['QUALITY ZONE'].count})` },
+                            ]}
+                        />
 
                         {selectedZoneFilter !== 'ALL' && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
+                            <AntButton
+                                type="text"
+                                size="small"
                                 onClick={() => setSelectedZoneFilter('ALL')}
-                                className="h-8.5 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                                icon={<RotateCcw className="size-3" />}
+                                className="text-xs text-muted-foreground hover:text-foreground"
                             >
-                                <RotateCcw className="size-3" />
-                                <span>Reset</span>
-                            </Button>
+                                Reset
+                            </AntButton>
                         )}
                     </div>
                 </div>

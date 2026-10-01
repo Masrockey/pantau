@@ -38,7 +38,7 @@ export function Pagination({
                     return (
                         <span
                             key={i}
-                            className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-sidebar-border/50 px-3 text-xs text-muted-foreground opacity-50 dark:border-sidebar-border"
+                            className="inline-flex h-8 min-w-8 items-center justify-center rounded-[6px] border border-border/40 px-2.5 text-xs text-muted-foreground/50 opacity-60 cursor-not-allowed bg-muted/20"
                             dangerouslySetInnerHTML={{ __html: cleanLabel }}
                         />
                     );
@@ -51,10 +51,10 @@ export function Pagination({
                         preserveState
                         preserveScroll
                         className={cn(
-                            'inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-3 text-xs font-medium transition-colors',
+                            'inline-flex h-8 min-w-8 items-center justify-center rounded-[6px] border px-2.5 text-xs transition-all cursor-pointer',
                             link.active
-                                ? 'border-primary bg-primary text-primary-foreground shadow-xs'
-                                : 'border-sidebar-border/70 bg-background text-foreground hover:bg-accent hover:text-accent-foreground dark:border-sidebar-border',
+                                ? 'border-primary bg-primary/10 text-primary font-semibold shadow-2xs'
+                                : 'border-border/60 bg-card text-foreground hover:border-primary hover:text-primary hover:bg-primary/5',
                         )}
                         dangerouslySetInnerHTML={{ __html: cleanLabel }}
                     />

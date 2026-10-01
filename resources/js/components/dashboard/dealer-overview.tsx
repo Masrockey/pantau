@@ -13,6 +13,17 @@ import {
     XCircle,
 } from 'lucide-react';
 import React from 'react';
+import {
+    Button as AntButton,
+    Card as AntCard,
+    Input as AntInput,
+    Pagination as AntPagination,
+    Progress as AntProgress,
+    Segmented as AntSegmented,
+    Select as AntSelect,
+    Statistic as AntStatistic,
+    Tag as AntTag,
+} from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -354,81 +365,79 @@ export function DealerOverview({
                 <div className="flex flex-wrap items-center gap-2">
                     {/* Month Picker */}
                     {availableMonths.length > 0 && (
-                        <div className="flex items-center gap-1.5 text-xs bg-muted/50 rounded-md border px-2 py-1">
-                            <Calendar className="size-3.5 text-muted-foreground" />
-                            <select
-                                value={activeMonth ?? 'all'}
-                                onChange={handleMonthChange}
-                                className="bg-transparent text-xs font-medium focus:outline-none cursor-pointer"
-                            >
-                                <option value="all" className="bg-background text-foreground">
-                                    All Tanggal
-                                </option>
-                                {availableMonths.map((m) => (
-                                    <option key={m} value={m} className="bg-background text-foreground">
-                                        {formatMonthLabel(m)}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        <AntSelect
+                            value={activeMonth ?? 'all'}
+                            onChange={(val) => {
+                                const currentParams = new URLSearchParams(window.location.search);
+                                if (val && val !== 'all') {
+                                    currentParams.set('month', val);
+                                } else {
+                                    currentParams.delete('month');
+                                }
+                                router.get(
+                                    window.location.pathname,
+                                    Object.fromEntries(currentParams.entries()),
+                                    { preserveState: true, preserveScroll: true }
+                                );
+                            }}
+                            className="w-36 sm:w-44"
+                            options={[
+                                { value: 'all', label: 'All Tanggal' },
+                                ...availableMonths.map((m) => ({
+                                    value: m,
+                                    label: formatMonthLabel(m),
+                                })),
+                            ]}
+                        />
                     )}
 
                     {/* Search */}
-                    <div className="relative">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                        <input
-                            type="text"
-                            placeholder="Cari dealer..."
-                            value={search}
-                            onChange={(e) => {
-                                setSearch(e.target.value);
-                                setCurrentPage(1);
-                            }}
-                            className="h-8 w-36 sm:w-44 rounded-md border border-input bg-transparent pl-8 pr-2 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        />
-                    </div>
+                    <AntInput
+                        placeholder="Cari dealer..."
+                        value={search}
+                        prefix={<Search className="size-3.5 text-muted-foreground" />}
+                        onChange={(e) => {
+                            setSearch(e.target.value);
+                            setCurrentPage(1);
+                        }}
+                        allowClear
+                        className="w-36 sm:w-44"
+                    />
 
                     {/* Toggle View Mode */}
-                    <div className="flex items-center rounded-md border bg-muted/40 p-0.5 text-xs">
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('table')}
-                            className={`flex items-center gap-1 rounded px-2 py-1 font-medium transition-colors cursor-pointer ${
-                                viewMode === 'table'
-                                    ? 'bg-background shadow-xs text-foreground font-semibold'
-                                    : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            title="Tampilan Matriks Tabel"
-                        >
-                            <TableIcon className="size-3.5" />
-                            <span className="hidden sm:inline">Tabel</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setViewMode('chart')}
-                            className={`flex items-center gap-1 rounded px-2 py-1 font-medium transition-colors cursor-pointer ${
-                                viewMode === 'chart'
-                                    ? 'bg-background shadow-xs text-foreground font-semibold'
-                                    : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                            title="Tampilan Grafik Performa"
-                        >
-                            <BarChart3 className="size-3.5" />
-                            <span className="hidden sm:inline">Grafik</span>
-                        </button>
-                    </div>
+                    <AntSegmented
+                        value={viewMode}
+                        onChange={(val) => setViewMode(val as 'table' | 'chart')}
+                        options={[
+                            {
+                                value: 'table',
+                                label: (
+                                    <span className="flex items-center gap-1">
+                                        <TableIcon className="size-3.5" />
+                                        <span className="hidden sm:inline">Tabel</span>
+                                    </span>
+                                ),
+                            },
+                            {
+                                value: 'chart',
+                                label: (
+                                    <span className="flex items-center gap-1">
+                                        <BarChart3 className="size-3.5" />
+                                        <span className="hidden sm:inline">Grafik</span>
+                                    </span>
+                                ),
+                            },
+                        ]}
+                    />
 
                     {/* Export CSV */}
-                    <Button
-                        variant="outline"
-                        size="sm"
+                    <AntButton
+                        icon={<Download className="size-3.5" />}
                         onClick={handleExportCsv}
-                        className="h-8 gap-1.5 text-xs cursor-pointer"
                         title="Download file Excel / CSV"
                     >
-                        <Download className="size-3.5" />
                         <span className="hidden md:inline">Export CSV</span>
-                    </Button>
+                    </AntButton>
                 </div>
             </CardHeader>
 
@@ -696,39 +705,44 @@ export function DealerOverview({
                     <div className="p-4 sm:p-6 space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {/* Summary Card 1 */}
-                            <div className="rounded-xl border p-4 bg-muted/20">
-                                <div className="text-xs text-muted-foreground font-medium">
-                                    {activeMonth === 'all' ? 'Total Ulasan (All Tanggal)' : 'Total Ulasan Bulan Ini'}
-                                </div>
-                                <div className="text-2xl font-bold mt-1 text-foreground">
-                                    {summary?.review_monthly.toLocaleString('id-ID') ?? 0}
-                                </div>
+                            <AntCard size="small" className="rounded-xl shadow-2xs border">
+                                <AntStatistic
+                                    title={activeMonth === 'all' ? 'Total Ulasan (All Tanggal)' : 'Total Ulasan Bulan Ini'}
+                                    value={summary?.review_monthly ?? 0}
+                                    formatter={(val) => Number(val).toLocaleString('id-ID')}
+                                />
                                 <div className="text-[11px] text-muted-foreground mt-1">
                                     Dari total {summary?.total_review_all.toLocaleString('id-ID') ?? 0} ulasan keseluruhan
                                 </div>
-                            </div>
+                            </AntCard>
 
                             {/* Summary Card 2 */}
-                            <div className="rounded-xl border p-4 bg-muted/20">
-                                <div className="text-xs text-muted-foreground font-medium">Tingkat Pencapaian Feedback</div>
-                                <div className="text-2xl font-bold mt-1 text-blue-600 dark:text-blue-400">
-                                    {summary?.ach_feedback.toFixed(1) ?? 0}%
-                                </div>
+                            <AntCard size="small" className="rounded-xl shadow-2xs border">
+                                <AntStatistic
+                                    title="Tingkat Pencapaian Feedback"
+                                    value={summary?.ach_feedback ?? 0}
+                                    precision={1}
+                                    suffix="%"
+                                    valueStyle={{ color: '#1677ff' }}
+                                />
                                 <div className="text-[11px] text-muted-foreground mt-1">
                                     {summary?.jumlah_feedback ?? 0} direspons, {summary?.belum_feedback ?? 0} menunggu
                                 </div>
-                            </div>
+                            </AntCard>
 
                             {/* Summary Card 3 */}
-                            <div className="rounded-xl border p-4 bg-muted/20">
-                                <div className="text-xs text-muted-foreground font-medium">Rata-rata GMB Score</div>
-                                <div className="text-2xl font-bold mt-1 text-amber-500">
-                                    ★ {summary?.gmb_score?.toFixed(2) ?? '-'}
-                                </div>
+                            <AntCard size="small" className="rounded-xl shadow-2xs border">
+                                <AntStatistic
+                                    title="Rata-rata GMB Score"
+                                    value={summary?.gmb_score ?? 0}
+                                    precision={2}
+                                    prefix="★"
+                                    valueStyle={{ color: '#faad14' }}
+                                />
                                 <div className="text-[11px] text-muted-foreground mt-1">
                                     Kontribusi Bintang 4-5: <strong>{summary?.cont_rating_4_5.toFixed(1) ?? 0}%</strong>
                                 </div>
-                            </div>
+                            </AntCard>
                         </div>
 
                         {/* Top Showrooms by Activity */}
@@ -748,9 +762,9 @@ export function DealerOverview({
                                         >
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-mono text-[11px] font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                                    <AntTag className="font-mono text-[11px] font-semibold">
                                                         {d.kode_dealer}
-                                                    </span>
+                                                    </AntTag>
                                                     <span className="font-semibold text-foreground">
                                                         {d.nama_dealer}
                                                     </span>
@@ -776,12 +790,12 @@ export function DealerOverview({
 
                                             {/* Progress bars */}
                                             <div className="space-y-1">
-                                                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                                                    <div
-                                                        className="h-full bg-primary rounded-full transition-all duration-300"
-                                                        style={{ width: `${pctWidth}%` }}
-                                                    />
-                                                </div>
+                                                <AntProgress
+                                                    percent={pctWidth}
+                                                    showInfo={false}
+                                                    strokeColor="#e60012"
+                                                    size="small"
+                                                />
                                                 <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-0.5">
                                                     <span>
                                                         Bintang 5: <strong>{d.rating_5}</strong> | Bintang 4:{' '}

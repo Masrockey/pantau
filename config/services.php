@@ -40,4 +40,8 @@ return [
         'timeout' => (int) env('GOOGLE_REVIEW_SCRAPER_TIMEOUT', 180),
     ],
 
+    'maptiler' => [
+        'key' => env('VITE_MAPTILER_API_KEY', 'Ky456DhoOJH2nIXinbxJ'),
+    ],
+
 ];
