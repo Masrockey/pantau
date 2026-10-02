@@ -2,6 +2,7 @@ import { Head, router, useForm } from '@inertiajs/react';
 import {
     AlertCircle,
     Building2,
+    CheckCircle2,
     Download,
     Edit2,
     ExternalLink,
@@ -9,6 +10,7 @@ import {
     MapPin,
     Phone,
     Plus,
+    RefreshCw,
     Search,
     Star,
     Trash2,
@@ -21,8 +23,12 @@ import { Pagination } from '@/components/pagination';
 import {
     Button as AntButton,
     Input as AntInput,
+    Modal as AntModal,
     Popconfirm as AntPopconfirm,
     Tag as AntTag,
+    Tooltip as AntTooltip,
+    message as antMessage,
+    notification as antNotification,
 } from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,12 +55,14 @@ interface DealersIndexProps {
         search?: string;
     };
     canManageAll?: boolean;
+    syncableCount?: number;
 }
 
 export default function DealersIndex({
     dealers,
     filters,
     canManageAll = true,
+    syncableCount,
 }: DealersIndexProps) {
     const [search, setSearch] = useState(filters.search || '');
     const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -65,9 +73,21 @@ export default function DealersIndex({
     const [selectedDealer, setSelectedDealer] = useState<Dealer | null>(null);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+    const [syncingDealerId, setSyncingDealerId] = useState<number | null>(null);
+    const [isSyncAllOpen, setIsSyncAllOpen] = useState(false);
+    const [isSyncingAll, setIsSyncingAll] = useState(false);
+    const [syncAllStatus, setSyncAllStatus] = useState<string>('');
+    const [syncAllResult, setSyncAllResult] = useState<{
+        total: number;
+        success: number;
+        failed: number;
+        skipped: number;
+    } | null>(null);
+
     const createForm = useForm({
         kode_dealer: '',
         nama_dealer: '',
+        nama_dealer_gbp: '',
         link_google_maps: '',
         latitude: '',
         longitude: '',
@@ -76,6 +96,9 @@ export default function DealersIndex({
         kecamatan: '',
         pos_code: '',
         no_telp_showroom: '',
+        jam_buka_weekday: '',
+        jam_buka_sabtu: '',
+        jam_buka_minggu: '',
         star_rate: '',
         total_review: '',
     });
@@ -83,6 +106,7 @@ export default function DealersIndex({
     const editForm = useForm({
         kode_dealer: '',
         nama_dealer: '',
+        nama_dealer_gbp: '',
         link_google_maps: '',
         latitude: '',
         longitude: '',
@@ -91,6 +115,9 @@ export default function DealersIndex({
         kecamatan: '',
         pos_code: '',
         no_telp_showroom: '',
+        jam_buka_weekday: '',
+        jam_buka_sabtu: '',
+        jam_buka_minggu: '',
         star_rate: '',
         total_review: '',
     });
@@ -189,6 +216,7 @@ export default function DealersIndex({
         createForm.setData({
             kode_dealer: '',
             nama_dealer: '',
+            nama_dealer_gbp: '',
             link_google_maps: '',
             latitude: '',
             longitude: '',
@@ -197,6 +225,9 @@ export default function DealersIndex({
             kecamatan: '',
             pos_code: '',
             no_telp_showroom: '',
+            jam_buka_weekday: '',
+            jam_buka_sabtu: '',
+            jam_buka_minggu: '',
             star_rate: '',
             total_review: '',
         });
@@ -219,6 +250,7 @@ export default function DealersIndex({
         editForm.setData({
             kode_dealer: dealer.kode_dealer,
             nama_dealer: dealer.nama_dealer,
+            nama_dealer_gbp: dealer.nama_dealer_gbp || '',
             link_google_maps: dealer.link_google_maps || '',
             latitude:
                 dealer.latitude !== null && dealer.latitude !== undefined
@@ -233,6 +265,9 @@ export default function DealersIndex({
             kecamatan: dealer.kecamatan || '',
             pos_code: dealer.pos_code || '',
             no_telp_showroom: dealer.no_telp_showroom || '',
+            jam_buka_weekday: dealer.jam_buka_weekday || '',
+            jam_buka_sabtu: dealer.jam_buka_sabtu || '',
+            jam_buka_minggu: dealer.jam_buka_minggu || '',
             star_rate:
                 dealer.star_rate !== null && dealer.star_rate !== undefined
                     ? String(dealer.star_rate)
@@ -274,6 +309,118 @@ export default function DealersIndex({
         });
     };
 
+    const handleSyncSingleDealer = async (dealer: Dealer) => {
+        if (!dealer.link_google_maps) {
+            antMessage.warning(
+                `Dealer ${dealer.nama_dealer} belum memiliki link Google Maps.`,
+            );
+            return;
+        }
+
+        setSyncingDealerId(dealer.id);
+        try {
+            const response = await fetch(dealersRoute.sync.url(dealer.id), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN':
+                        (
+                            document.querySelector(
+                                'meta[name="csrf-token"]',
+                            ) as HTMLMetaElement
+                        )?.content || '',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                const updated = data.data?.updated_fields || [];
+                antNotification.success({
+                    message: 'Sinkronisasi Profil Berhasil',
+                    description:
+                        updated.length > 0
+                            ? `Profil ${dealer.nama_dealer} berhasil disinkronkan (${updated.length} kolom: ${updated.join(', ')}).`
+                            : `Profil ${dealer.nama_dealer} sudah mutakhir dengan Google Maps.`,
+                    placement: 'topRight',
+                    duration: 4.5,
+                });
+                router.reload({ only: ['dealers', 'syncableCount'] });
+            } else {
+                antNotification.error({
+                    message: 'Gagal Sinkronisasi',
+                    description:
+                        data.message ||
+                        'Terjadi kesalahan saat menyinkronkan profil dealer dengan Google Maps.',
+                    placement: 'topRight',
+                    duration: 5,
+                });
+            }
+        } catch (err: any) {
+            antNotification.error({
+                message: 'Kesalahan Sistem',
+                description: err.message || 'Gagal menghubungi server.',
+                placement: 'topRight',
+            });
+        } finally {
+            setSyncingDealerId(null);
+        }
+    };
+
+    const handleStartSyncAll = async () => {
+        setIsSyncingAll(true);
+        setSyncAllStatus('Menghubungkan ke scraper service Google Maps...');
+        setSyncAllResult(null);
+
+        try {
+            const response = await fetch(dealersRoute.syncAll.url(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN':
+                        (
+                            document.querySelector(
+                                'meta[name="csrf-token"]',
+                            ) as HTMLMetaElement
+                        )?.content || '',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                setSyncAllResult(data.summary);
+                setSyncAllStatus('Sinkronisasi selesai!');
+                antNotification.success({
+                    message: 'Sinkronisasi Semua Selesai',
+                    description: data.message,
+                    placement: 'topRight',
+                });
+                router.reload({ only: ['dealers', 'syncableCount'] });
+            } else {
+                setSyncAllStatus('Sinkronisasi gagal.');
+                antNotification.error({
+                    message: 'Gagal Sinkronisasi Massal',
+                    description:
+                        data.message ||
+                        'Terjadi kesalahan saat sinkronisasi massal.',
+                    placement: 'topRight',
+                });
+            }
+        } catch (err: any) {
+            setSyncAllStatus('Terjadi kesalahan koneksi.');
+            antNotification.error({
+                message: 'Error Koneksi',
+                description: err.message || 'Gagal menghubungi server.',
+                placement: 'topRight',
+            });
+        } finally {
+            setIsSyncingAll(false);
+        }
+    };
+
     return (
         <>
             <Head title="Menu Dealer" />
@@ -295,8 +442,23 @@ export default function DealersIndex({
                     {canManageAll && (
                         <div className="flex flex-wrap items-center gap-2">
                             <AntButton
+                                onClick={() => {
+                                    setSyncAllResult(null);
+                                    setSyncAllStatus('');
+                                    setIsSyncAllOpen(true);
+                                }}
+                                icon={
+                                    <RefreshCw className="size-3.5 text-blue-600 dark:text-blue-400" />
+                                }
+                                className="border-blue-600/30 text-blue-700 dark:text-blue-400 font-medium"
+                            >
+                                Sync Google Maps
+                            </AntButton>
+                            <AntButton
                                 onClick={handleOpenImport}
-                                icon={<Upload className="size-3.5 text-emerald-600 dark:text-emerald-400" />}
+                                icon={
+                                    <Upload className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                                }
                                 className="border-emerald-600/30 text-emerald-700 dark:text-emerald-400 font-medium"
                             >
                                 Import Excel
@@ -358,6 +520,9 @@ export default function DealersIndex({
                                         Nama Dealer
                                     </th>
                                     <th className="px-3 py-3.5 whitespace-nowrap">
+                                        Nama Dealer di GBP
+                                    </th>
+                                    <th className="px-3 py-3.5 whitespace-nowrap">
                                         Star Rate
                                     </th>
                                     <th className="px-3 py-3.5 whitespace-nowrap">
@@ -365,6 +530,15 @@ export default function DealersIndex({
                                     </th>
                                     <th className="px-3 py-3.5 whitespace-nowrap">
                                         No Telp Showroom
+                                    </th>
+                                    <th className="px-3 py-3.5 whitespace-nowrap">
+                                        Jam Buka Weekday
+                                    </th>
+                                    <th className="px-3 py-3.5 whitespace-nowrap">
+                                        Jam Buka Sabtu
+                                    </th>
+                                    <th className="px-3 py-3.5 whitespace-nowrap">
+                                        Jam Buka Minggu
                                     </th>
                                     <th className="min-w-[200px] px-3 py-3.5">
                                         Alamat
@@ -396,7 +570,7 @@ export default function DealersIndex({
                                 {dealers.data.length === 0 ? (
                                     <tr>
                                         <td
-                                            colSpan={14}
+                                            colSpan={18}
                                             className="py-12 text-center text-muted-foreground"
                                         >
                                             <div className="flex flex-col items-center justify-center gap-2">
@@ -447,6 +621,13 @@ export default function DealersIndex({
                                                 <td className="px-3 py-3.5 font-medium whitespace-nowrap text-foreground">
                                                     {dealer.nama_dealer}
                                                 </td>
+                                                <td className="px-3 py-3.5 font-medium whitespace-nowrap text-foreground">
+                                                    {dealer.nama_dealer_gbp || (
+                                                        <span className="text-xs text-muted-foreground italic">
+                                                            -
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td className="px-3 py-3.5 whitespace-nowrap">
                                                     {dealer.star_rate !==
                                                         null &&
@@ -495,6 +676,27 @@ export default function DealersIndex({
                                                         </a>
                                                     ) : (
                                                         <span className="text-xs text-muted-foreground italic">
+                                                            -
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-3.5 text-xs whitespace-nowrap text-foreground">
+                                                    {dealer.jam_buka_weekday || (
+                                                        <span className="text-muted-foreground italic">
+                                                            -
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-3.5 text-xs whitespace-nowrap text-foreground">
+                                                    {dealer.jam_buka_sabtu || (
+                                                        <span className="text-muted-foreground italic">
+                                                            -
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-3.5 text-xs whitespace-nowrap text-foreground">
+                                                    {dealer.jam_buka_minggu || (
+                                                        <span className="text-muted-foreground italic">
                                                             -
                                                         </span>
                                                     )}
@@ -601,6 +803,41 @@ export default function DealersIndex({
                                                 </td>
                                                 <td className="px-3 py-3.5 text-right whitespace-nowrap">
                                                     <div className="flex items-center justify-end gap-1">
+                                                        <AntTooltip
+                                                            title={
+                                                                dealer.link_google_maps
+                                                                    ? 'Sync data profil showroom dari Google Maps'
+                                                                    : 'Belum memiliki link Google Maps'
+                                                            }
+                                                        >
+                                                            <AntButton
+                                                                type="text"
+                                                                size="small"
+                                                                disabled={
+                                                                    !dealer.link_google_maps ||
+                                                                    syncingDealerId === dealer.id
+                                                                }
+                                                                onClick={() =>
+                                                                    handleSyncSingleDealer(
+                                                                        dealer,
+                                                                    )
+                                                                }
+                                                                icon={
+                                                                    <RefreshCw
+                                                                        className={cn(
+                                                                            'size-3.5',
+                                                                            syncingDealerId ===
+                                                                                dealer.id
+                                                                                ? 'animate-spin text-blue-500'
+                                                                                : dealer.link_google_maps
+                                                                                  ? 'text-blue-600 hover:text-blue-700 dark:text-blue-400'
+                                                                                  : 'text-muted-foreground/30',
+                                                                        )}
+                                                                    />
+                                                                }
+                                                                aria-label="Sync Dealer"
+                                                            />
+                                                        </AntTooltip>
                                                         <AntButton
                                                             type="text"
                                                             size="small"
@@ -679,7 +916,7 @@ export default function DealersIndex({
                         className="space-y-4 py-2"
                     >
                         {/* Section 1: Identitas Dealer */}
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                             <div className="space-y-2">
                                 <Label htmlFor="create_kode_dealer">
                                     Kode Dealer{' '}
@@ -730,6 +967,36 @@ export default function DealersIndex({
                                 />
                                 <InputError
                                     message={createForm.errors.nama_dealer}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="create_nama_dealer_gbp">
+                                        Nama Dealer di GBP
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="create_nama_dealer_gbp"
+                                    placeholder="Contoh: Dealer Nusantara Official"
+                                    value={createForm.data.nama_dealer_gbp}
+                                    onChange={(e) =>
+                                        createForm.setData(
+                                            'nama_dealer_gbp',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        createForm.errors.nama_dealer_gbp
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={createForm.errors.nama_dealer_gbp}
                                 />
                             </div>
                         </div>
@@ -829,6 +1096,99 @@ export default function DealersIndex({
                                 />
                                 <InputError
                                     message={createForm.errors.total_review}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Section 2.5: Jam Operasional */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="create_jam_buka_weekday">
+                                        Jam Buka Weekday
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="create_jam_buka_weekday"
+                                    placeholder="Contoh: 08.00–17.00"
+                                    value={createForm.data.jam_buka_weekday}
+                                    onChange={(e) =>
+                                        createForm.setData(
+                                            'jam_buka_weekday',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        createForm.errors.jam_buka_weekday
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={createForm.errors.jam_buka_weekday}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="create_jam_buka_sabtu">
+                                        Jam Buka Sabtu
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="create_jam_buka_sabtu"
+                                    placeholder="Contoh: 08.00–14.00"
+                                    value={createForm.data.jam_buka_sabtu}
+                                    onChange={(e) =>
+                                        createForm.setData(
+                                            'jam_buka_sabtu',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        createForm.errors.jam_buka_sabtu
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={createForm.errors.jam_buka_sabtu}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="create_jam_buka_minggu">
+                                        Jam Buka Minggu
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="create_jam_buka_minggu"
+                                    placeholder="Contoh: Tutup / 09.00–15.00"
+                                    value={createForm.data.jam_buka_minggu}
+                                    onChange={(e) =>
+                                        createForm.setData(
+                                            'jam_buka_minggu',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        createForm.errors.jam_buka_minggu
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={createForm.errors.jam_buka_minggu}
                                 />
                             </div>
                         </div>
@@ -1087,7 +1447,7 @@ export default function DealersIndex({
                         className="space-y-4 py-2"
                     >
                         {/* Section 1: Identitas Dealer */}
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                             <div className="space-y-2">
                                 <Label htmlFor="edit_kode_dealer">
                                     Kode Dealer{' '}
@@ -1141,6 +1501,36 @@ export default function DealersIndex({
                                 />
                                 <InputError
                                     message={editForm.errors.nama_dealer}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="edit_nama_dealer_gbp">
+                                        Nama Dealer di GBP
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="edit_nama_dealer_gbp"
+                                    placeholder="Contoh: Dealer Nusantara Official"
+                                    value={editForm.data.nama_dealer_gbp}
+                                    onChange={(e) =>
+                                        editForm.setData(
+                                            'nama_dealer_gbp',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        editForm.errors.nama_dealer_gbp
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={editForm.errors.nama_dealer_gbp}
                                 />
                             </div>
                         </div>
@@ -1240,6 +1630,99 @@ export default function DealersIndex({
                                 />
                                 <InputError
                                     message={editForm.errors.total_review}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Section 2.5: Jam Operasional */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="edit_jam_buka_weekday">
+                                        Jam Buka Weekday
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="edit_jam_buka_weekday"
+                                    placeholder="Contoh: 08.00–17.00"
+                                    value={editForm.data.jam_buka_weekday}
+                                    onChange={(e) =>
+                                        editForm.setData(
+                                            'jam_buka_weekday',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        editForm.errors.jam_buka_weekday
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={editForm.errors.jam_buka_weekday}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="edit_jam_buka_sabtu">
+                                        Jam Buka Sabtu
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="edit_jam_buka_sabtu"
+                                    placeholder="Contoh: 08.00–14.00"
+                                    value={editForm.data.jam_buka_sabtu}
+                                    onChange={(e) =>
+                                        editForm.setData(
+                                            'jam_buka_sabtu',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        editForm.errors.jam_buka_sabtu
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={editForm.errors.jam_buka_sabtu}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="edit_jam_buka_minggu">
+                                        Jam Buka Minggu
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="edit_jam_buka_minggu"
+                                    placeholder="Contoh: Tutup / 09.00–15.00"
+                                    value={editForm.data.jam_buka_minggu}
+                                    onChange={(e) =>
+                                        editForm.setData(
+                                            'jam_buka_minggu',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        editForm.errors.jam_buka_minggu
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={editForm.errors.jam_buka_minggu}
                                 />
                             </div>
                         </div>
@@ -1814,6 +2297,143 @@ export default function DealersIndex({
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Modal Sinkronisasi Profil Google Maps */}
+            <AntModal
+                open={isSyncAllOpen}
+                onCancel={() => {
+                    if (!isSyncingAll) {
+                        setIsSyncAllOpen(false);
+                    }
+                }}
+                title={
+                    <div className="flex items-center gap-2 text-base font-semibold text-foreground">
+                        <RefreshCw className="size-4 text-blue-600 dark:text-blue-400" />
+                        <span>Sinkronisasi Profil Google Maps</span>
+                    </div>
+                }
+                footer={[
+                    <AntButton
+                        key="close"
+                        disabled={isSyncingAll}
+                        onClick={() => setIsSyncAllOpen(false)}
+                    >
+                        {syncAllResult ? 'Selesai' : 'Batal'}
+                    </AntButton>,
+                    <AntButton
+                        key="start"
+                        type="primary"
+                        loading={isSyncingAll}
+                        disabled={
+                            isSyncingAll ||
+                            (syncableCount !== undefined && syncableCount === 0)
+                        }
+                        onClick={handleStartSyncAll}
+                        className="bg-blue-600 hover:bg-blue-700"
+                    >
+                        {isSyncingAll
+                            ? 'Sedang Menyinkronkan...'
+                            : 'Mulai Sinkronisasi Semua'}
+                    </AntButton>,
+                ]}
+            >
+                <div className="space-y-4 py-2">
+                    <div className="rounded-lg border border-blue-200 bg-blue-50/70 p-3.5 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/40 dark:text-blue-200">
+                        <p className="mb-1 font-semibold">
+                            Cakupan Data yang Disinkronkan:
+                        </p>
+                        <p className="text-muted-foreground dark:text-blue-300">
+                            Fitur ini hanya menyinkronkan 9 kolom data profil
+                            showroom berikut dari Google Maps:
+                        </p>
+                        <div className="mt-2 grid grid-cols-2 gap-1 font-mono text-[11px] text-blue-800 dark:text-blue-300">
+                            <div>• Star Rate</div>
+                            <div>• Total Review</div>
+                            <div>• No Telp Showroom</div>
+                            <div>• Alamat</div>
+                            <div>• Kelurahan</div>
+                            <div>• Kecamatan</div>
+                            <div>• Pos Code</div>
+                            <div>• Latitude & Longitude</div>
+                        </div>
+                        <p className="mt-2.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                            Catatan: Sinkronisasi manual ini tidak menarik
+                            ulasan / reviews ke database.
+                        </p>
+                    </div>
+
+                    <div className="rounded-lg border border-sidebar-border bg-muted/30 p-3 text-xs">
+                        <div className="flex justify-between py-1">
+                            <span className="text-muted-foreground">
+                                Total Dealer Terdaftar:
+                            </span>
+                            <span className="font-semibold text-foreground">
+                                {dealers.total}
+                            </span>
+                        </div>
+                        <div className="flex justify-between py-1">
+                            <span className="text-muted-foreground">
+                                Dealer Memiliki Link Google Maps:
+                            </span>
+                            <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                {syncableCount ??
+                                    dealers.data.filter((d) =>
+                                        Boolean(d.link_google_maps),
+                                    ).length}
+                            </span>
+                        </div>
+                    </div>
+
+                    {isSyncingAll && (
+                        <div className="space-y-2 rounded-lg border border-sidebar-border bg-background p-4 text-center">
+                            <RefreshCw className="mx-auto size-6 animate-spin text-blue-600" />
+                            <p className="text-xs font-medium text-foreground">
+                                {syncAllStatus ||
+                                    'Sedang mengambil data profil dari Google Maps...'}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                                Proses ini dijalankan di server. Harap tunggu
+                                hingga selesai.
+                            </p>
+                        </div>
+                    )}
+
+                    {syncAllResult && (
+                        <div className="space-y-2.5 rounded-lg border border-sidebar-border bg-background p-3.5">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                                <CheckCircle2 className="size-4 text-emerald-500" />
+                                <span>Hasil Sinkronisasi Massal:</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                                <div className="rounded bg-emerald-50 p-2 dark:bg-emerald-950/40">
+                                    <div className="font-bold text-emerald-600 dark:text-emerald-400">
+                                        {syncAllResult.success}
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground">
+                                        Berhasil
+                                    </div>
+                                </div>
+                                <div className="rounded bg-red-50 p-2 dark:bg-red-950/40">
+                                    <div className="font-bold text-red-600 dark:text-red-400">
+                                        {syncAllResult.failed}
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground">
+                                        Gagal
+                                    </div>
+                                </div>
+                                <div className="rounded bg-muted p-2">
+                                    <div className="font-bold text-foreground">
+                                        {syncAllResult.skipped}
+                                    </div>
+                                    <div className="text-[11px] text-muted-foreground">
+                                        Dilewati
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </AntModal>
         </>
     );
 }

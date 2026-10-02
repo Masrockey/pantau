@@ -3,7 +3,9 @@
 use App\Models\Dealer;
 use App\Models\User;
 use App\Services\DealerExcelService;
+use App\Services\DealerSyncService;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 
 test('guests are redirected to the login page from dealers', function (): void {
     $response = $this->get(route('dealers.index'));
@@ -342,5 +344,259 @@ test('dealers can be imported from a csv file with all details and header variat
         'pos_code' => '50241',
         'no_telp_showroom' => '024-8311234',
         'total_review' => 310,
+    ]);
+});
+
+test('dealer sync updates only the 9 specified profile fields and does not touch reviews', function (): void {
+    $user = User::factory()->create();
+    $dealer = Dealer::factory()->create([
+        'nama_dealer' => 'Padolo Jaya Motor - Dompu',
+        'link_google_maps' => 'https://maps.app.goo.gl/yDPjVp5vSdsPnM646',
+        'star_rate' => 4.0,
+        'total_review' => 20,
+        'no_telp_showroom' => '0812345678',
+        'alamat' => 'Alamat Lama',
+        'kelurahan' => 'Lama',
+        'kecamatan' => 'Lama',
+        'pos_code' => '00000',
+        'latitude' => 0.0,
+        'longitude' => 0.0,
+    ]);
+
+    Http::fake([
+        '*/health' => Http::response(['status' => 'ok'], 200),
+        '*/api/scrape/profile' => Http::response([
+            'success' => true,
+            'data' => [
+                'name' => 'Padolo Jaya Motor',
+                'rating' => 4.5,
+                'reviewCount' => 75,
+                'category' => 'Dealer Honda',
+                'address' => 'Jl. Soekarno-Hatta No.26, Bada, Kec. Dompu, Kabupaten Dompu, Nusa Tenggara Bar. 84211',
+                'phone' => '0821-4448-0140',
+                'placeUrl' => 'https://www.google.com/maps/place/Padolo+Jaya+Motor/@-8.5387744,118.4620428,584m/data=!3m2!1e3!4b1',
+                'latitude' => -8.5387744,
+                'longitude' => 118.4620428,
+            ],
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($user)->postJson(route('dealers.sync', $dealer->id));
+
+    $response->assertOk()
+        ->assertJson([
+            'success' => true,
+        ]);
+
+    $this->assertDatabaseHas('dealers', [
+        'id' => $dealer->id,
+        'star_rate' => 4.5,
+        'total_review' => 75,
+        'no_telp_showroom' => '0821-4448-0140',
+        'alamat' => 'Jl. Soekarno-Hatta No.26, Bada, Kec. Dompu, Kabupaten Dompu, Nusa Tenggara Bar. 84211',
+        'kelurahan' => 'Bada',
+        'kecamatan' => 'Dompu',
+        'pos_code' => '84211',
+        'latitude' => -8.5387744,
+        'longitude' => 118.4620428,
+    ]);
+
+    $this->assertDatabaseCount('reviews', 0);
+});
+
+test('dealer sync returns error if dealer has no google maps link', function (): void {
+    $user = User::factory()->create();
+    $dealer = Dealer::factory()->create([
+        'nama_dealer' => 'Dealer Tanpa Link',
+        'link_google_maps' => null,
+    ]);
+
+    $response = $this->actingAs($user)->postJson(route('dealers.sync', $dealer->id));
+
+    $response->assertStatus(422)
+        ->assertJson([
+            'success' => false,
+        ]);
+});
+
+test('dealer sync-all updates all eligible dealers', function (): void {
+    $user = User::factory()->create();
+    $dealer = Dealer::factory()->create([
+        'link_google_maps' => 'https://maps.app.goo.gl/validlink1',
+    ]);
+
+    Http::fake([
+        '*/health' => Http::response(['status' => 'ok'], 200),
+        '*/api/scrape/profile' => Http::response([
+            'success' => true,
+            'data' => [
+                'rating' => 4.8,
+                'reviewCount' => 150,
+                'phone' => '08123456789',
+                'address' => 'Jl. Test No. 1, Desa Sukamaju, Kec. Denpasar Sel., Denpasar 80222',
+                'latitude' => -8.65,
+                'longitude' => 115.22,
+            ],
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($user)->postJson(route('dealers.sync-all'));
+
+    $response->assertOk()
+        ->assertJson([
+            'success' => true,
+            'summary' => [
+                'success' => 1,
+            ],
+        ]);
+
+    $this->assertDatabaseHas('dealers', [
+        'id' => $dealer->id,
+        'star_rate' => 4.8,
+        'total_review' => 150,
+        'kelurahan' => 'Sukamaju',
+        'kecamatan' => 'Denpasar Selatan',
+        'pos_code' => '80222',
+    ]);
+});
+
+test('dealers can be created and updated with nama_dealer_gbp and operating hours', function (): void {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->post(route('dealers.store'), [
+        'kode_dealer' => 'DLR888',
+        'nama_dealer' => 'Dealer Bintang',
+        'nama_dealer_gbp' => 'Dealer Bintang Official GBP',
+        'jam_buka_weekday' => '08.00–17.00',
+        'jam_buka_sabtu' => '08.00–14.00',
+        'jam_buka_minggu' => 'Tutup',
+    ]);
+
+    $response->assertRedirect(route('dealers.index'));
+    $this->assertDatabaseHas('dealers', [
+        'kode_dealer' => 'DLR888',
+        'nama_dealer_gbp' => 'Dealer Bintang Official GBP',
+        'jam_buka_weekday' => '08.00–17.00',
+        'jam_buka_sabtu' => '08.00–14.00',
+        'jam_buka_minggu' => 'Tutup',
+    ]);
+
+    $dealer = Dealer::where('kode_dealer', 'DLR888')->firstOrFail();
+
+    $updateResponse = $this->actingAs($user)->put(route('dealers.update', $dealer), [
+        'kode_dealer' => 'DLR888',
+        'nama_dealer' => 'Dealer Bintang Baru',
+        'nama_dealer_gbp' => 'Dealer Bintang Mandiri GBP',
+        'jam_buka_weekday' => '08.30–16.30',
+        'jam_buka_sabtu' => '08.30–13.00',
+        'jam_buka_minggu' => '09.00–15.00',
+    ]);
+
+    $updateResponse->assertRedirect(route('dealers.index'));
+    $this->assertDatabaseHas('dealers', [
+        'id' => $dealer->id,
+        'nama_dealer_gbp' => 'Dealer Bintang Mandiri GBP',
+        'jam_buka_weekday' => '08.30–16.30',
+        'jam_buka_sabtu' => '08.30–13.00',
+        'jam_buka_minggu' => '09.00–15.00',
+    ]);
+});
+
+test('dealer sync updates nama_dealer_gbp and opening hours from scraper profile', function (): void {
+    $user = User::factory()->create();
+    $dealer = Dealer::factory()->create([
+        'nama_dealer' => 'Dealer Krida Test',
+        'link_google_maps' => 'https://maps.app.goo.gl/kridatest123',
+    ]);
+
+    Http::fake([
+        '*/health' => Http::response(['status' => 'ok'], 200),
+        '*/api/scrape/profile' => Http::response([
+            'success' => true,
+            'data' => [
+                'name' => 'Dealer Krida Toyota Dompu',
+                'rating' => 4.7,
+                'reviewCount' => 95,
+                'phone' => '0373-21123',
+                'address' => 'Jl. Bhayangkara No. 10, Bali, Kec. Dompu, Dompu 84212',
+                'openingHours' => [
+                    'Senin: 08.00–17.00',
+                    'Selasa: 08.00–17.00',
+                    'Rabu: 08.00–17.00',
+                    'Kamis: 08.00–17.00',
+                    'Jumat: 08.00–17.00',
+                    'Sabtu: 08.00–14.00',
+                    'Minggu: Tutup',
+                ],
+                'latitude' => -8.53,
+                'longitude' => 118.46,
+            ],
+        ], 200),
+    ]);
+
+    $response = $this->actingAs($user)->postJson(route('dealers.sync', $dealer->id));
+
+    $response->assertOk()
+        ->assertJson([
+            'success' => true,
+        ]);
+
+    $this->assertDatabaseHas('dealers', [
+        'id' => $dealer->id,
+        'nama_dealer_gbp' => 'Dealer Krida Toyota Dompu',
+        'jam_buka_weekday' => '08.00–17.00',
+        'jam_buka_sabtu' => '08.00–14.00',
+        'jam_buka_minggu' => 'Tutup',
+    ]);
+});
+
+test('DealerSyncService parseOpeningHours accurately parses various day formats and unicode icons', function (): void {
+    $service = app(DealerSyncService::class);
+
+    $hours = [
+        "Jumat07.30\u{2013}17.00\u{E14D}",
+        "Sabtu: 07.30\u{2013}17.30",
+        'MingguTutup',
+    ];
+
+    $parsed = $service->parseOpeningHours($hours);
+
+    expect($parsed['weekday'])->toBe("07.30\u{2013}17.00")
+        ->and($parsed['saturday'])->toBe("07.30\u{2013}17.30")
+        ->and($parsed['sunday'])->toBe('Tutup');
+});
+
+test('dealer sync fallback extracts place name from redirected Google Maps URL when scraper is offline', function (): void {
+    $user = User::factory()->create();
+    $dealer = Dealer::factory()->create([
+        'nama_dealer' => 'Padolo Jaya Motor - Dompu',
+        'link_google_maps' => 'https://maps.app.goo.gl/shortlink123',
+    ]);
+
+    Http::fake([
+        '*/health' => Http::response([], 500),
+        'https://maps.app.goo.gl/shortlink123' => Http::response(
+            '<html><head><title>Padolo Jaya Motor - Google Maps</title></head><body></body></html>',
+            302,
+            ['Location' => 'https://www.google.com/maps/place/Padolo+Jaya+Motor/@-8.5387744,118.4620428,17z']
+        ),
+        'https://www.google.com/maps/place/Padolo+Jaya+Motor/@-8.5387744,118.4620428,17z*' => Http::response(
+            '<html><head><meta property="og:title" content="Padolo Jaya Motor"><title>Padolo Jaya Motor - Google Maps</title></head><body></body></html>',
+            200
+        ),
+    ]);
+
+    $response = $this->actingAs($user)->postJson(route('dealers.sync', $dealer->id));
+
+    $response->assertOk()
+        ->assertJson([
+            'success' => true,
+        ]);
+
+    $this->assertDatabaseHas('dealers', [
+        'id' => $dealer->id,
+        'nama_dealer_gbp' => 'Padolo Jaya Motor',
+        'latitude' => -8.5387744,
+        'longitude' => 118.4620428,
     ]);
 });

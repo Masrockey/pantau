@@ -89,6 +89,18 @@ class DealerExcelService
             $noTelpShowroom = $colIndices['no_telp_showroom'] !== null
                 ? trim((string) ($row[$colIndices['no_telp_showroom']] ?? ''))
                 : null;
+            $namaDealerGbp = $colIndices['nama_dealer_gbp'] !== null
+                ? trim((string) ($row[$colIndices['nama_dealer_gbp']] ?? ''))
+                : null;
+            $jamBukaWeekday = $colIndices['jam_buka_weekday'] !== null
+                ? trim((string) ($row[$colIndices['jam_buka_weekday']] ?? ''))
+                : null;
+            $jamBukaSabtu = $colIndices['jam_buka_sabtu'] !== null
+                ? trim((string) ($row[$colIndices['jam_buka_sabtu']] ?? ''))
+                : null;
+            $jamBukaMinggu = $colIndices['jam_buka_minggu'] !== null
+                ? trim((string) ($row[$colIndices['jam_buka_minggu']] ?? ''))
+                : null;
 
             // Skip completely empty rows
             if ($kodeDealer === '' && $namaDealer === '' && empty($linkGmaps) && $latitude === null && $longitude === null && empty($alamat) && empty($noTelpShowroom)) {
@@ -113,6 +125,7 @@ class DealerExcelService
                 if ($updateExisting) {
                     $existing->update([
                         'nama_dealer' => $namaDealer,
+                        'nama_dealer_gbp' => $namaDealerGbp ?: $existing->nama_dealer_gbp,
                         'link_google_maps' => $linkGmaps ?: null,
                         'latitude' => $latitude,
                         'longitude' => $longitude,
@@ -121,6 +134,9 @@ class DealerExcelService
                         'kecamatan' => $kecamatan ?: null,
                         'pos_code' => $posCode ?: null,
                         'no_telp_showroom' => $noTelpShowroom ?: null,
+                        'jam_buka_weekday' => $jamBukaWeekday ?: $existing->jam_buka_weekday,
+                        'jam_buka_sabtu' => $jamBukaSabtu ?: $existing->jam_buka_sabtu,
+                        'jam_buka_minggu' => $jamBukaMinggu ?: $existing->jam_buka_minggu,
                         'star_rate' => $starRate,
                         'total_review' => $totalReview,
                     ]);
@@ -130,6 +146,7 @@ class DealerExcelService
                 Dealer::create([
                     'kode_dealer' => strtoupper($kodeDealer),
                     'nama_dealer' => $namaDealer,
+                    'nama_dealer_gbp' => $namaDealerGbp ?: null,
                     'link_google_maps' => $linkGmaps ?: null,
                     'latitude' => $latitude,
                     'longitude' => $longitude,
@@ -138,6 +155,9 @@ class DealerExcelService
                     'kecamatan' => $kecamatan ?: null,
                     'pos_code' => $posCode ?: null,
                     'no_telp_showroom' => $noTelpShowroom ?: null,
+                    'jam_buka_weekday' => $jamBukaWeekday ?: null,
+                    'jam_buka_sabtu' => $jamBukaSabtu ?: null,
+                    'jam_buka_minggu' => $jamBukaMinggu ?: null,
                     'star_rate' => $starRate,
                     'total_review' => $totalReview,
                 ]);
@@ -356,6 +376,7 @@ class DealerExcelService
         $indices = [
             'kode_dealer' => null,
             'nama_dealer' => null,
+            'nama_dealer_gbp' => null,
             'link_google_maps' => null,
             'latitude' => null,
             'longitude' => null,
@@ -365,6 +386,9 @@ class DealerExcelService
             'kecamatan' => null,
             'pos_code' => null,
             'no_telp_showroom' => null,
+            'jam_buka_weekday' => null,
+            'jam_buka_sabtu' => null,
+            'jam_buka_minggu' => null,
             'total_review' => null,
         ];
 
@@ -378,6 +402,14 @@ class DealerExcelService
                 $clean === 'kodedealer'
             )) {
                 $indices['kode_dealer'] = $index;
+            } elseif ($indices['nama_dealer_gbp'] === null && (
+                str_contains($clean, 'nama dealer di gbp') ||
+                str_contains($clean, 'nama dealer gbp') ||
+                str_contains($clean, 'nama gbp') ||
+                str_contains($clean, 'dealer gbp') ||
+                $clean === 'gbp'
+            )) {
+                $indices['nama_dealer_gbp'] = $index;
             } elseif ($indices['nama_dealer'] === null && (
                 str_contains($clean, 'nama dealer') ||
                 $clean === 'nama' ||
@@ -449,6 +481,22 @@ class DealerExcelService
                 $clean === 'zip'
             )) {
                 $indices['pos_code'] = $index;
+            } elseif ($indices['jam_buka_weekday'] === null && (
+                str_contains($clean, 'weekday') ||
+                str_contains($clean, 'senin - jumat') ||
+                str_contains($clean, 'senin-jumat')
+            )) {
+                $indices['jam_buka_weekday'] = $index;
+            } elseif ($indices['jam_buka_sabtu'] === null && (
+                str_contains($clean, 'sabtu') ||
+                str_contains($clean, 'saturday')
+            )) {
+                $indices['jam_buka_sabtu'] = $index;
+            } elseif ($indices['jam_buka_minggu'] === null && (
+                str_contains($clean, 'minggu') ||
+                str_contains($clean, 'sunday')
+            )) {
+                $indices['jam_buka_minggu'] = $index;
             } elseif ($indices['no_telp_showroom'] === null && (
                 str_contains($clean, 'no telp') ||
                 str_contains($clean, 'notelp') ||
@@ -537,42 +585,59 @@ class DealerExcelService
 </Relationships>');
 
         $strings = [
+            // Headers (0-15)
             'Kode Dealer',
             'Nama Dealer',
+            'Nama Dealer di GBP',
             'Link Google Maps',
             'Latitude',
             'Longitude',
             'Star Rate',
+            'Total Review',
+            'No Telp Showroom',
+            'Jam Buka Weekday',
+            'Jam Buka Sabtu',
+            'Jam Buka Minggu',
             'Alamat',
             'Kelurahan',
             'Kecamatan',
             'Pos Code',
-            'No Telp Showroom',
-            'Total Review',
+
+            // Row 1 (16-31)
             'DLR001',
             'Dealer Nusantara Jakarta',
+            'Dealer Nusantara Official Jakarta',
             'https://maps.google.com/?q=-6.200000,106.816666',
             '-6.200000',
             '106.816666',
             '4.8',
+            '120',
+            '021-5551234',
+            '08.00–17.00',
+            '08.00–14.00',
+            'Tutup',
             'Jl. Jend. Sudirman No. 123',
             'Karet Semanggi',
             'Setiabudi',
             '12930',
-            '021-5551234',
-            '120',
+
+            // Row 2 (32-47)
             'DLR002',
             'Dealer Jaya Surabaya',
+            'Dealer Jaya Motor Surabaya',
             'https://maps.google.com/?q=-7.257472,112.752090',
             '-7.257472',
             '112.752090',
             '4.7',
+            '85',
+            '031-5556789',
+            '08.30–16.30',
+            '08.30–12.00',
+            'Tutup',
             'Jl. Pemuda No. 45',
             'Embong Kaliasin',
             'Genteng',
             '60271',
-            '031-5556789',
-            '85',
         ];
 
         $sstXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -583,52 +648,33 @@ class DealerExcelService
         $sstXml .= '</sst>';
         $zip->addFromString('xl/sharedStrings.xml', $sstXml);
 
+        $cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
         $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             .'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            .'<sheetData>'
-            .'<row r="1">'
-            .'<c r="A1" t="s"><v>0</v></c>'
-            .'<c r="B1" t="s"><v>1</v></c>'
-            .'<c r="C1" t="s"><v>2</v></c>'
-            .'<c r="D1" t="s"><v>3</v></c>'
-            .'<c r="E1" t="s"><v>4</v></c>'
-            .'<c r="F1" t="s"><v>5</v></c>'
-            .'<c r="G1" t="s"><v>6</v></c>'
-            .'<c r="H1" t="s"><v>7</v></c>'
-            .'<c r="I1" t="s"><v>8</v></c>'
-            .'<c r="J1" t="s"><v>9</v></c>'
-            .'<c r="K1" t="s"><v>10</v></c>'
-            .'<c r="L1" t="s"><v>11</v></c>'
-            .'</row>'
-            .'<row r="2">'
-            .'<c r="A2" t="s"><v>12</v></c>'
-            .'<c r="B2" t="s"><v>13</v></c>'
-            .'<c r="C2" t="s"><v>14</v></c>'
-            .'<c r="D2" t="s"><v>15</v></c>'
-            .'<c r="E2" t="s"><v>16</v></c>'
-            .'<c r="F2" t="s"><v>17</v></c>'
-            .'<c r="G2" t="s"><v>18</v></c>'
-            .'<c r="H2" t="s"><v>19</v></c>'
-            .'<c r="I2" t="s"><v>20</v></c>'
-            .'<c r="J2" t="s"><v>21</v></c>'
-            .'<c r="K2" t="s"><v>22</v></c>'
-            .'<c r="L2" t="s"><v>23</v></c>'
-            .'</row>'
-            .'<row r="3">'
-            .'<c r="A3" t="s"><v>24</v></c>'
-            .'<c r="B3" t="s"><v>25</v></c>'
-            .'<c r="C3" t="s"><v>26</v></c>'
-            .'<c r="D3" t="s"><v>27</v></c>'
-            .'<c r="E3" t="s"><v>28</v></c>'
-            .'<c r="F3" t="s"><v>29</v></c>'
-            .'<c r="G3" t="s"><v>30</v></c>'
-            .'<c r="H3" t="s"><v>31</v></c>'
-            .'<c r="I3" t="s"><v>32</v></c>'
-            .'<c r="J3" t="s"><v>33</v></c>'
-            .'<c r="K3" t="s"><v>34</v></c>'
-            .'<c r="L3" t="s"><v>35</v></c>'
-            .'</row>'
-            .'</sheetData>'
+            .'<sheetData>';
+
+        // Row 1 (Header: index 0 to 15)
+        $sheetXml .= '<row r="1">';
+        foreach ($cols as $i => $col) {
+            $sheetXml .= '<c r="'.$col.'1" t="s"><v>'.$i.'</v></c>';
+        }
+        $sheetXml .= '</row>';
+
+        // Row 2 (Sample 1: index 16 to 31)
+        $sheetXml .= '<row r="2">';
+        foreach ($cols as $i => $col) {
+            $sheetXml .= '<c r="'.$col.'2" t="s"><v>'.(16 + $i).'</v></c>';
+        }
+        $sheetXml .= '</row>';
+
+        // Row 3 (Sample 2: index 32 to 47)
+        $sheetXml .= '<row r="3">';
+        foreach ($cols as $i => $col) {
+            $sheetXml .= '<c r="'.$col.'3" t="s"><v>'.(32 + $i).'</v></c>';
+        }
+        $sheetXml .= '</row>';
+
+        $sheetXml .= '</sheetData>'
             .'</worksheet>';
         $zip->addFromString('xl/worksheets/sheet1.xml', $sheetXml);
 

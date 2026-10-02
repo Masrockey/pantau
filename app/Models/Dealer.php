@@ -14,6 +14,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $kode_dealer
  * @property string $nama_dealer
+ * @property string|null $nama_dealer_gbp
  * @property string|null $link_google_maps
  * @property float|null $latitude
  * @property float|null $longitude
@@ -22,6 +23,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $kecamatan
  * @property string|null $pos_code
  * @property string|null $no_telp_showroom
+ * @property string|null $jam_buka_weekday
+ * @property string|null $jam_buka_sabtu
+ * @property string|null $jam_buka_minggu
  * @property float|null $star_rate
  * @property int|null $total_review
  * @property Carbon|null $created_at
@@ -32,6 +36,7 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'kode_dealer',
     'nama_dealer',
+    'nama_dealer_gbp',
     'link_google_maps',
     'latitude',
     'longitude',
@@ -40,6 +45,9 @@ use Illuminate\Support\Carbon;
     'kecamatan',
     'pos_code',
     'no_telp_showroom',
+    'jam_buka_weekday',
+    'jam_buka_sabtu',
+    'jam_buka_minggu',
     'star_rate',
     'total_review',
 ])]

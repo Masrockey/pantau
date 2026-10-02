@@ -7,6 +7,8 @@ use App\Http\Requests\StoreDealerRequest;
 use App\Http\Requests\UpdateDealerRequest;
 use App\Models\Dealer;
 use App\Services\DealerExcelService;
+use App\Services\DealerSyncService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -41,6 +43,7 @@ class DealerController extends Controller
                 $query->where(function ($q) use ($search): void {
                     $q->where('kode_dealer', 'like', "%{$search}%")
                         ->orWhere('nama_dealer', 'like', "%{$search}%")
+                        ->orWhere('nama_dealer_gbp', 'like', "%{$search}%")
                         ->orWhere('alamat', 'like', "%{$search}%")
                         ->orWhere('kecamatan', 'like', "%{$search}%")
                         ->orWhere('kelurahan', 'like', "%{$search}%")
@@ -51,12 +54,25 @@ class DealerController extends Controller
             ->paginate(10)
             ->withQueryString();
 
+        $syncableCount = Dealer::query()
+            ->when(! $isGlobal, function ($query) use ($userDealerId): void {
+                if ($userDealerId) {
+                    $query->where('id', $userDealerId);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            })
+            ->whereNotNull('link_google_maps')
+            ->where('link_google_maps', '!=', '')
+            ->count();
+
         return Inertia::render('dealers/index', [
             'dealers' => $dealers,
             'filters' => [
                 'search' => $search,
             ],
             'canManageAll' => $isGlobal,
+            'syncableCount' => $syncableCount,
         ]);
     }
 
@@ -183,5 +199,158 @@ class DealerController extends Controller
         }
 
         return to_route('dealers.index');
+    }
+
+    /**
+     * Synchronize a dealer's profile details from Google Maps.
+     * Updates ONLY: star_rate, total_review, no_telp_showroom, alamat, kelurahan, kecamatan, pos_code, latitude, longitude.
+     */
+    public function sync(Request $request, Dealer $dealer, DealerSyncService $syncService): JsonResponse|RedirectResponse
+    {
+        $user = $request->user();
+        if (! $user?->hasGlobalAccess() && (int) $dealer->id !== (int) $user?->dealer_id) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda tidak memiliki hak akses untuk menyinkronkan dealer ini.',
+                ], 403);
+            }
+            abort(403, 'Anda tidak memiliki hak akses untuk menyinkronkan dealer ini.');
+        }
+
+        if (empty($dealer->link_google_maps)) {
+            $msg = "Dealer {$dealer->nama_dealer} belum memiliki link Google Maps.";
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $msg,
+                ], 422);
+            }
+
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => $msg,
+            ]);
+
+            return back();
+        }
+
+        try {
+            $useProxy = $request->boolean('use_proxy', false);
+            $result = $syncService->syncDealerProfileOnly($dealer, $useProxy);
+
+            $updatedCount = count($result['updated_fields']);
+            $msg = $updatedCount > 0
+                ? "Profil {$dealer->nama_dealer} berhasil disinkronisasi ({$updatedCount} data diperbarui)."
+                : "Profil {$dealer->nama_dealer} sudah sesuai dengan data terbaru di Google Maps.";
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $msg,
+                    'data' => $result,
+                ]);
+            }
+
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => $msg,
+            ]);
+
+            return back();
+        } catch (Throwable $e) {
+            $errorMsg = 'Gagal menyinkronkan dealer: '.$e->getMessage();
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $errorMsg,
+                ], 500);
+            }
+
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => $errorMsg,
+            ]);
+
+            return back();
+        }
+    }
+
+    /**
+     * Synchronize all eligible dealers' profile details from Google Maps.
+     */
+    public function syncAll(Request $request, DealerSyncService $syncService): JsonResponse|RedirectResponse
+    {
+        $user = $request->user();
+        if (! $user?->hasGlobalAccess()) {
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Aksi ini hanya dapat dilakukan oleh Super Admin atau Main Dealer.',
+                ], 403);
+            }
+            abort(403, 'Aksi ini hanya dapat dilakukan oleh Super Admin atau Main Dealer.');
+        }
+
+        $dealerIds = $request->input('dealer_ids');
+        $dealersQuery = Dealer::query()->whereNotNull('link_google_maps')->where('link_google_maps', '!=', '');
+        if (is_array($dealerIds) && ! empty($dealerIds)) {
+            $dealersQuery->whereIn('id', $dealerIds);
+        }
+
+        $dealers = $dealersQuery->get();
+        if ($dealers->isEmpty()) {
+            $msg = 'Tidak ada dealer dengan link Google Maps yang dapat disinkronkan.';
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $msg,
+                ], 422);
+            }
+
+            Inertia::flash('toast', [
+                'type' => 'warning',
+                'message' => $msg,
+            ]);
+
+            return back();
+        }
+
+        try {
+            $useProxy = $request->boolean('use_proxy', false);
+            $summary = $syncService->syncAllDealers($dealers, $useProxy);
+
+            $msg = "Sinkronisasi selesai: {$summary['success']} berhasil, {$summary['failed']} gagal, {$summary['skipped']} dilewati.";
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $msg,
+                    'summary' => $summary,
+                ]);
+            }
+
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => $msg,
+            ]);
+
+            return back();
+        } catch (Throwable $e) {
+            $errorMsg = 'Gagal menyinkronkan data dealer: '.$e->getMessage();
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $errorMsg,
+                ], 500);
+            }
+
+            Inertia::flash('toast', [
+                'type' => 'error',
+                'message' => $errorMsg,
+            ]);
+
+            return back();
+        }
     }
 }

@@ -25,6 +25,7 @@ class StoreDealerRequest extends FormRequest
         return [
             'kode_dealer' => ['required', 'string', 'max:50', 'unique:dealers,kode_dealer'],
             'nama_dealer' => ['required', 'string', 'max:255'],
+            'nama_dealer_gbp' => ['nullable', 'string', 'max:255'],
             'link_google_maps' => ['nullable', 'string', 'max:2000'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
@@ -33,6 +34,9 @@ class StoreDealerRequest extends FormRequest
             'kecamatan' => ['nullable', 'string', 'max:100'],
             'pos_code' => ['nullable', 'string', 'max:20'],
             'no_telp_showroom' => ['nullable', 'string', 'max:50'],
+            'jam_buka_weekday' => ['nullable', 'string', 'max:100'],
+            'jam_buka_sabtu' => ['nullable', 'string', 'max:100'],
+            'jam_buka_minggu' => ['nullable', 'string', 'max:100'],
             'star_rate' => ['nullable', 'numeric', 'between:0,5'],
             'total_review' => ['nullable', 'integer', 'min:0'],
         ];
@@ -48,6 +52,7 @@ class StoreDealerRequest extends FormRequest
         return [
             'kode_dealer' => 'kode dealer',
             'nama_dealer' => 'nama dealer',
+            'nama_dealer_gbp' => 'nama dealer di GBP',
             'link_google_maps' => 'link google maps',
             'latitude' => 'latitude',
             'longitude' => 'longitude',
@@ -56,6 +61,9 @@ class StoreDealerRequest extends FormRequest
             'kecamatan' => 'kecamatan',
             'pos_code' => 'kode pos',
             'no_telp_showroom' => 'no telepon showroom',
+            'jam_buka_weekday' => 'jam buka weekday',
+            'jam_buka_sabtu' => 'jam buka sabtu',
+            'jam_buka_minggu' => 'jam buka minggu',
             'star_rate' => 'star rate',
             'total_review' => 'total review',
         ];

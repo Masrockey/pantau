@@ -22,6 +22,8 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('dealers/template', [DealerController::class, 'template'])->name('dealers.template');
     Route::post('dealers/import', [DealerController::class, 'import'])->name('dealers.import');
+    Route::post('dealers/sync-all', [DealerController::class, 'syncAll'])->name('dealers.sync-all');
+    Route::post('dealers/{dealer}/sync', [DealerController::class, 'sync'])->name('dealers.sync');
     Route::resource('dealers', DealerController::class)->except(['create', 'show', 'edit']);
     Route::resource('users', UserController::class)->except(['create', 'show', 'edit']);
     Route::get('reviews/scraper-health', [ReviewController::class, 'checkHealth'])->name('reviews.scraper-health');

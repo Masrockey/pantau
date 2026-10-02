@@ -2,6 +2,7 @@ export type Dealer = {
     id: number;
     kode_dealer: string;
     nama_dealer: string;
+    nama_dealer_gbp?: string | null;
     link_google_maps: string | null;
     latitude: number | string | null;
     longitude: number | string | null;
@@ -10,6 +11,9 @@ export type Dealer = {
     kecamatan?: string | null;
     pos_code?: string | null;
     no_telp_showroom?: string | null;
+    jam_buka_weekday?: string | null;
+    jam_buka_sabtu?: string | null;
+    jam_buka_minggu?: string | null;
     star_rate?: number | string | null;
     total_review?: number | null;
     users_count?: number;
