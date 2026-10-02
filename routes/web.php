@@ -22,6 +22,7 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('dealers/template', [DealerController::class, 'template'])->name('dealers.template');
     Route::post('dealers/import', [DealerController::class, 'import'])->name('dealers.import');
+    Route::get('dealers/syncable', [DealerController::class, 'syncableList'])->name('dealers.syncable');
     Route::post('dealers/sync-all', [DealerController::class, 'syncAll'])->name('dealers.sync-all');
     Route::post('dealers/{dealer}/sync', [DealerController::class, 'sync'])->name('dealers.sync');
     Route::resource('dealers', DealerController::class)->except(['create', 'show', 'edit']);

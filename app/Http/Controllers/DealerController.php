@@ -235,6 +235,9 @@ class DealerController extends Controller
             return back();
         }
 
+        @ini_set('max_execution_time', '120');
+        @set_time_limit(120);
+
         try {
             $useProxy = $request->boolean('use_proxy', false);
             $result = $syncService->syncDealerProfileOnly($dealer, $useProxy);
@@ -277,10 +280,41 @@ class DealerController extends Controller
     }
 
     /**
+     * Get list of dealers with Google Maps link eligible for synchronization.
+     */
+    public function syncableList(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $isGlobal = $user?->hasGlobalAccess() ?? false;
+        $userDealerId = $user?->dealer_id;
+
+        $dealers = Dealer::query()
+            ->when(! $isGlobal, function ($query) use ($userDealerId): void {
+                if ($userDealerId) {
+                    $query->where('id', $userDealerId);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            })
+            ->whereNotNull('link_google_maps')
+            ->where('link_google_maps', '!=', '')
+            ->orderBy('nama_dealer')
+            ->get(['id', 'kode_dealer', 'nama_dealer', 'link_google_maps']);
+
+        return response()->json([
+            'success' => true,
+            'dealers' => $dealers,
+        ]);
+    }
+
+    /**
      * Synchronize all eligible dealers' profile details from Google Maps.
      */
     public function syncAll(Request $request, DealerSyncService $syncService): JsonResponse|RedirectResponse
     {
+        @ini_set('max_execution_time', '0');
+        @set_time_limit(0);
+
         $user = $request->user();
         if (! $user?->hasGlobalAccess()) {
             if ($request->wantsJson()) {

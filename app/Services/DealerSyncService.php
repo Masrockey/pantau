@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Dealer;
 use Exception;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
@@ -16,6 +15,8 @@ class DealerSyncService
 
     protected int $timeout;
 
+    protected ?bool $scraperHealthy = null;
+
     public function __construct(?string $baseUrl = null, ?int $timeout = null)
     {
         $this->baseUrl = $baseUrl ?: (string) (Config::get('services.google_review_scraper.url') ?: env('GBP_API_BASE_URL', 'http://localhost:3000'));
@@ -26,14 +27,18 @@ class DealerSyncService
     /**
      * Check if scraper API service is online and healthy.
      */
-    public function isHealthy(): bool
+    public function isHealthy(bool $forceCheck = false): bool
     {
-        try {
-            $response = Http::timeout(3)->get("{$this->baseUrl}/health");
+        if ($this->scraperHealthy !== null && ! $forceCheck) {
+            return $this->scraperHealthy;
+        }
 
-            return $response->successful() && ($response->json('status') === 'ok');
+        try {
+            $response = Http::timeout(2)->get("{$this->baseUrl}/health");
+
+            return $this->scraperHealthy = ($response->successful() && ($response->json('status') === 'ok'));
         } catch (\Throwable) {
-            return false;
+            return $this->scraperHealthy = false;
         }
     }
 
@@ -185,6 +190,75 @@ class DealerSyncService
     }
 
     /**
+     * Normalize a time range string into standard Indonesian format (e.g. 08.00–16.00, Tutup, 24 Jam).
+     */
+    public function normalizeTimeString(string $timeString): ?string
+    {
+        $timeString = trim($timeString);
+        if ($timeString === '') {
+            return null;
+        }
+
+        if (preg_match('/^(?:Closed|Tutup)$/i', $timeString)) {
+            return 'Tutup';
+        }
+
+        if (preg_match('/^(?:Open 24 hours|Buka 24 jam|24 Jam)$/i', $timeString)) {
+            return '24 Jam';
+        }
+
+        // Match time range separated by dash, en-dash, em-dash, 'to', or 'sampai'
+        if (preg_match('/^(.+?)\s*(?:[-–—]|to|sampai)\s*(.+)$/iu', $timeString, $matches)) {
+            $start = $this->parseSingleTime($matches[1]);
+            $end = $this->parseSingleTime($matches[2]);
+
+            if ($start !== null && $end !== null) {
+                return "{$start}–{$end}";
+            }
+        }
+
+        return $this->cleanText($timeString);
+    }
+
+    /**
+     * Parse a single time token (e.g. "8 AM", "8.00 am", "14:00", "08.30") into standard "HH.MM".
+     */
+    private function parseSingleTime(string $token): ?string
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return null;
+        }
+
+        // Match 12-hour format with AM/PM: e.g. "8 AM", "8:30 PM", "8.00 am", "12 PM"
+        if (preg_match('/^(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)$/i', $token, $m)) {
+            $hour = (int) $m[1];
+            $minute = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
+            $meridiem = strtolower($m[3]);
+
+            if ($meridiem === 'pm' && $hour < 12) {
+                $hour += 12;
+            } elseif ($meridiem === 'am' && $hour === 12) {
+                $hour = 0;
+            }
+
+            return sprintf('%02d.%02d', $hour, $minute);
+        }
+
+        // Match 24-hour format: e.g. "08.00", "08:30", "8.00", "16:00"
+        if (preg_match('/^(\d{1,2})[:.](\d{2})$/', $token, $m)) {
+            $hour = (int) $m[1];
+            $minute = (int) $m[2];
+
+            if ($hour >= 0 && $hour <= 24 && $minute >= 0 && $minute < 60) {
+                return sprintf('%02d.%02d', $hour, $minute);
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Parse opening hours array into weekday, saturday, and sunday strings.
      *
      * @param  array<string>  $openingHours
@@ -195,6 +269,7 @@ class DealerSyncService
         $weekday = null;
         $saturday = null;
         $sunday = null;
+        $weekdayIsMonday = false;
 
         foreach ($openingHours as $rawRow) {
             $row = $this->cleanText((string) $rawRow);
@@ -202,9 +277,9 @@ class DealerSyncService
                 continue;
             }
 
-            // Match Saturday (e.g. "Sabtu: 08.00–14.00", "Sabtu08.00–14.00", "Saturday 08:00 - 14:00")
+            // Match Saturday (e.g. "Sabtu: 08.00–14.00", "Sabtu08.00–14.00", "Saturday 8.00 am–2.00 pm")
             if (preg_match('/^(?:Sabtu|Saturday)\s*[:,-]?\s*(.+)$/iu', $row, $m)) {
-                $cleanedTime = $this->cleanText($m[1]);
+                $cleanedTime = $this->normalizeTimeString($m[1]);
                 if ($cleanedTime !== null) {
                     $saturday = $cleanedTime;
                 }
@@ -212,9 +287,9 @@ class DealerSyncService
                 continue;
             }
 
-            // Match Sunday (e.g. "Minggu: Tutup", "MingguTutup", "Sunday Closed")
+            // Match Sunday (e.g. "Minggu: Tutup", "MingguTutup", "Sunday Closed", "Sunday 8.00 am–2.00 pm")
             if (preg_match('/^(?:Minggu|Sunday)\s*[:,-]?\s*(.+)$/iu', $row, $m)) {
-                $cleanedTime = $this->cleanText($m[1]);
+                $cleanedTime = $this->normalizeTimeString($m[1]);
                 if ($cleanedTime !== null) {
                     $sunday = $cleanedTime;
                 }
@@ -222,11 +297,12 @@ class DealerSyncService
                 continue;
             }
 
-            // Match Monday-Friday range if present (e.g. "Senin–Jumat: 08.00–17.00")
+            // Match Monday-Friday range if present (e.g. "Senin–Jumat: 08.00–17.00", "Monday–Friday: 8.00 am–4.00 pm")
             if (preg_match('/^(?:Senin\s*[-–]\s*Jumat|Mon\s*[-–]\s*Fri|Monday\s*[-–]\s*Friday)\s*[:,-]?\s*(.+)$/iu', $row, $m)) {
-                $cleanedTime = $this->cleanText($m[1]);
+                $cleanedTime = $this->normalizeTimeString($m[1]);
                 if ($cleanedTime !== null) {
                     $weekday = $cleanedTime;
+                    $weekdayIsMonday = true;
                 }
 
                 continue;
@@ -234,17 +310,18 @@ class DealerSyncService
 
             // Match Monday specifically (preferred representative for weekday)
             if (preg_match('/^(?:Senin|Monday)\s*[:,-]?\s*(.+)$/iu', $row, $m)) {
-                $cleanedTime = $this->cleanText($m[1]);
+                $cleanedTime = $this->normalizeTimeString($m[1]);
                 if ($cleanedTime !== null) {
                     $weekday = $cleanedTime;
+                    $weekdayIsMonday = true;
                 }
 
                 continue;
             }
 
-            // Match other individual weekdays (Selasa, Rabu, Kamis, Jumat, etc.) if weekday not yet set
-            if ($weekday === null && preg_match('/^(?:Selasa|Rabu|Kamis|Jumat|Tuesday|Wednesday|Thursday|Friday)\s*[:,-]?\s*(.+)$/iu', $row, $m)) {
-                $cleanedTime = $this->cleanText($m[1]);
+            // Match other individual weekdays (Selasa, Rabu, Kamis, Jumat, etc.) if weekday not yet set by Monday
+            if (! $weekdayIsMonday && preg_match('/^(?:Selasa|Rabu|Kamis|Jumat|Tuesday|Wednesday|Thursday|Friday)\s*[:,-]?\s*(.+)$/iu', $row, $m)) {
+                $cleanedTime = $this->normalizeTimeString($m[1]);
                 if ($cleanedTime !== null) {
                     $weekday = $cleanedTime;
                 }
@@ -256,6 +333,57 @@ class DealerSyncService
             'saturday' => $saturday,
             'sunday' => $sunday,
         ];
+    }
+
+    /**
+     * Resolve a short or redirect URL (e.g. maps.app.goo.gl) to its canonical Google Maps destination URL.
+     */
+    public function resolveRedirectUrl(string $url): string
+    {
+        if (! str_contains($url, 'goo.gl') && ! str_contains($url, 'maps.app')) {
+            return $url;
+        }
+
+        // In test environment, skip curl so Http::fake() can intercept the request
+        if (! app()->runningUnitTests()) {
+            try {
+                $ch = curl_init($url);
+                curl_setopt($ch, CURLOPT_NOBODY, true);
+                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+                curl_exec($ch);
+                $effective = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+                curl_close($ch);
+
+                if (! empty($effective) && is_string($effective) && $effective !== $url) {
+                    return $effective;
+                }
+            } catch (\Throwable) {
+                // Fall back to Guzzle if curl encounters an issue
+            }
+        }
+
+        try {
+            $redirectResponse = Http::withoutVerifying()
+                ->timeout(8)
+                ->withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept-Language' => 'id-ID,id;q=0.9',
+                ])
+                ->get($url);
+
+            $effective = (string) $redirectResponse->effectiveUri();
+            if (! empty($effective) && $effective !== $url) {
+                return $effective;
+            }
+        } catch (\Throwable) {
+            // Ignore resolution failure and return raw $url
+        }
+
+        return $url;
     }
 
     /**
@@ -272,17 +400,42 @@ class DealerSyncService
             throw new Exception("Dealer {$dealer->nama_dealer} tidak memiliki link Google Maps.");
         }
 
+        // Pre-resolve short redirect URLs (e.g. maps.app.goo.gl) to ensure canonical Google Maps URL with language parameter
+        $resolvedUrl = $this->resolveRedirectUrl($url);
+        $cleanBaseUrl = preg_replace('/([?&])hl=[^&]+/', '', $resolvedUrl);
+        $targetUrlId = $cleanBaseUrl.(str_contains($cleanBaseUrl, '?') ? '&hl=id' : '?hl=id');
+        $targetUrlEn = $cleanBaseUrl.(str_contains($cleanBaseUrl, '?') ? '&hl=en' : '?hl=en');
+
         // 1. If scraper API is healthy, use its Playwright profile scraper
         if ($this->isHealthy()) {
             try {
                 $response = Http::timeout($this->timeout)->post("{$this->baseUrl}/api/scrape/profile", [
-                    'url' => $url,
+                    'url' => $targetUrlId,
                     'language' => 'id',
                     'useProxy' => $useProxy,
                 ]);
 
                 if ($response->successful()) {
                     $data = $response->json('data') ?? [];
+
+                    // Fallback to English if openingHours is missing or incomplete (<= 1 day)
+                    if (empty($data['openingHours']) || count($data['openingHours']) <= 1) {
+                        try {
+                            $resEn = Http::timeout($this->timeout)->post("{$this->baseUrl}/api/scrape/profile", [
+                                'url' => $targetUrlEn,
+                                'language' => 'en',
+                                'useProxy' => $useProxy,
+                            ]);
+                            if ($resEn->successful()) {
+                                $enHours = $resEn->json('data.openingHours');
+                                if (is_array($enHours) && count($enHours) > count($data['openingHours'] ?? [])) {
+                                    $data['openingHours'] = $enHours;
+                                }
+                            }
+                        } catch (\Throwable) {
+                            // Non-critical fallback failure
+                        }
+                    }
 
                     return [
                         'name' => $data['name'] ?? null,
@@ -296,8 +449,8 @@ class DealerSyncService
                         'longitude' => isset($data['longitude']) && is_numeric($data['longitude']) ? (float) $data['longitude'] : null,
                     ];
                 }
-            } catch (ConnectionException) {
-                Log::warning("DealerSyncService: Connection to scraper at {$this->baseUrl} failed, falling back to direct URL resolution.");
+            } catch (\Throwable $e) {
+                Log::warning("DealerSyncService: Scraper call at {$this->baseUrl} failed ({$e->getMessage()}), falling back to direct URL resolution.");
             }
         }
 
@@ -570,6 +723,9 @@ class DealerSyncService
      */
     public function syncAllDealers(?Collection $dealers = null, bool $useProxy = false): array
     {
+        @ini_set('max_execution_time', '0');
+        @set_time_limit(0);
+
         $dealers = $dealers ?? Dealer::query()
             ->whereNotNull('link_google_maps')
             ->where('link_google_maps', '!=', '')
@@ -582,6 +738,7 @@ class DealerSyncService
         $results = [];
 
         foreach ($dealers as $dealer) {
+            @set_time_limit(60);
             if (empty($dealer->link_google_maps)) {
                 $skipped++;
                 $results[] = [

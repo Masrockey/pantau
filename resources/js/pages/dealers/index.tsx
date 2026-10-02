@@ -77,6 +77,14 @@ export default function DealersIndex({
     const [isSyncAllOpen, setIsSyncAllOpen] = useState(false);
     const [isSyncingAll, setIsSyncingAll] = useState(false);
     const [syncAllStatus, setSyncAllStatus] = useState<string>('');
+    const [syncAllProgress, setSyncAllProgress] = useState<{
+        current: number;
+        total: number;
+        currentDealerName: string;
+        success: number;
+        failed: number;
+    } | null>(null);
+    const cancelSyncAllRef = React.useRef(false);
     const [syncAllResult, setSyncAllResult] = useState<{
         total: number;
         success: number;
@@ -370,55 +378,141 @@ export default function DealersIndex({
 
     const handleStartSyncAll = async () => {
         setIsSyncingAll(true);
-        setSyncAllStatus('Menghubungkan ke scraper service Google Maps...');
         setSyncAllResult(null);
+        setSyncAllProgress(null);
+        setSyncAllStatus('Mengambil daftar dealer yang siap disinkronkan...');
+        cancelSyncAllRef.current = false;
 
         try {
-            const response = await fetch(dealersRoute.syncAll.url(), {
-                method: 'POST',
+            const syncableUrl = (dealersRoute as any).syncable
+                ? (dealersRoute as any).syncable.url()
+                : '/dealers/syncable';
+
+            const listRes = await fetch(syncableUrl, {
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN':
-                        (
-                            document.querySelector(
-                                'meta[name="csrf-token"]',
-                            ) as HTMLMetaElement
-                        )?.content || '',
+                    Accept: 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
             });
 
-            const data = await response.json();
-            if (response.ok && data.success) {
-                setSyncAllResult(data.summary);
-                setSyncAllStatus('Sinkronisasi selesai!');
+            if (!listRes.ok) {
+                throw new Error('Gagal mengambil daftar dealer dari server.');
+            }
+
+            const listData = await listRes.json();
+            const syncableDealers: Array<{ id: number; nama_dealer: string; link_google_maps: string }> =
+                listData.dealers || [];
+
+            if (syncableDealers.length === 0) {
+                setSyncAllStatus('Tidak ada dealer dengan link Google Maps yang dapat disinkronkan.');
+                antNotification.warning({
+                    message: 'Tidak Ada Data',
+                    description: 'Tidak ada dealer dengan link Google Maps yang dapat disinkronkan.',
+                    placement: 'topRight',
+                });
+                return;
+            }
+
+            const total = syncableDealers.length;
+            let successCount = 0;
+            let failedCount = 0;
+
+            const csrfToken =
+                (
+                    document.querySelector(
+                        'meta[name="csrf-token"]',
+                    ) as HTMLMetaElement
+                )?.content || '';
+
+            for (let i = 0; i < total; i++) {
+                if (cancelSyncAllRef.current) {
+                    break;
+                }
+
+                const d = syncableDealers[i];
+                setSyncAllProgress({
+                    current: i + 1,
+                    total,
+                    currentDealerName: d.nama_dealer,
+                    success: successCount,
+                    failed: failedCount,
+                });
+                setSyncAllStatus(`Menyinkronkan (${i + 1}/${total}): ${d.nama_dealer}...`);
+
+                try {
+                    const res = await fetch(dealersRoute.sync.url(d.id), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+
+                    const resData = await res.json();
+                    if (res.ok && resData.success) {
+                        successCount++;
+                    } else {
+                        failedCount++;
+                    }
+                } catch {
+                    failedCount++;
+                }
+
+                setSyncAllProgress({
+                    current: i + 1,
+                    total,
+                    currentDealerName: d.nama_dealer,
+                    success: successCount,
+                    failed: failedCount,
+                });
+            }
+
+            const wasCancelled = cancelSyncAllRef.current;
+            const finalResult = {
+                total,
+                success: successCount,
+                failed: failedCount,
+                skipped: total - (successCount + failedCount),
+            };
+
+            setSyncAllResult(finalResult);
+            setSyncAllStatus(
+                wasCancelled
+                    ? `Sinkronisasi dihentikan: ${successCount} berhasil, ${failedCount} gagal.`
+                    : `Sinkronisasi selesai: ${successCount} berhasil, ${failedCount} gagal.`,
+            );
+
+            if (successCount > 0) {
                 antNotification.success({
-                    message: 'Sinkronisasi Semua Selesai',
-                    description: data.message,
+                    message: wasCancelled ? 'Sinkronisasi Dihentikan' : 'Sinkronisasi Selesai',
+                    description: `${successCount} dealer berhasil disinkronkan.`,
                     placement: 'topRight',
                 });
                 router.reload({ only: ['dealers', 'syncableCount'] });
-            } else {
-                setSyncAllStatus('Sinkronisasi gagal.');
+            } else if (failedCount > 0) {
                 antNotification.error({
-                    message: 'Gagal Sinkronisasi Massal',
-                    description:
-                        data.message ||
-                        'Terjadi kesalahan saat sinkronisasi massal.',
+                    message: 'Sinkronisasi Selesai Dengan Catatan',
+                    description: `${failedCount} dealer gagal disinkronkan.`,
                     placement: 'topRight',
                 });
             }
         } catch (err: any) {
             setSyncAllStatus('Terjadi kesalahan koneksi.');
             antNotification.error({
-                message: 'Error Koneksi',
+                message: 'Gagal Sinkronisasi Massal',
                 description: err.message || 'Gagal menghubungi server.',
                 placement: 'topRight',
             });
         } finally {
             setIsSyncingAll(false);
         }
+    };
+
+    const handleCancelSyncAll = () => {
+        cancelSyncAllRef.current = true;
+        setSyncAllStatus('Menghentikan sinkronisasi setelah showroom saat ini...');
     };
 
     return (
@@ -2302,39 +2396,48 @@ export default function DealersIndex({
             <AntModal
                 open={isSyncAllOpen}
                 onCancel={() => {
-                    if (!isSyncingAll) {
+                    if (isSyncingAll) {
+                        handleCancelSyncAll();
+                    } else {
                         setIsSyncAllOpen(false);
                     }
                 }}
                 title={
                     <div className="flex items-center gap-2 text-base font-semibold text-foreground">
-                        <RefreshCw className="size-4 text-blue-600 dark:text-blue-400" />
+                        <RefreshCw className={cn('size-4 text-blue-600 dark:text-blue-400', isSyncingAll && 'animate-spin')} />
                         <span>Sinkronisasi Profil Google Maps</span>
                     </div>
                 }
                 footer={[
-                    <AntButton
-                        key="close"
-                        disabled={isSyncingAll}
-                        onClick={() => setIsSyncAllOpen(false)}
-                    >
-                        {syncAllResult ? 'Selesai' : 'Batal'}
-                    </AntButton>,
-                    <AntButton
-                        key="start"
-                        type="primary"
-                        loading={isSyncingAll}
-                        disabled={
-                            isSyncingAll ||
-                            (syncableCount !== undefined && syncableCount === 0)
-                        }
-                        onClick={handleStartSyncAll}
-                        className="bg-blue-600 hover:bg-blue-700"
-                    >
-                        {isSyncingAll
-                            ? 'Sedang Menyinkronkan...'
-                            : 'Mulai Sinkronisasi Semua'}
-                    </AntButton>,
+                    isSyncingAll ? (
+                        <AntButton
+                            key="stop"
+                            danger
+                            onClick={handleCancelSyncAll}
+                        >
+                            Hentikan Proses
+                        </AntButton>
+                    ) : (
+                        <AntButton
+                            key="close"
+                            onClick={() => setIsSyncAllOpen(false)}
+                        >
+                            {syncAllResult ? 'Tutup' : 'Batal'}
+                        </AntButton>
+                    ),
+                    !isSyncingAll && (
+                        <AntButton
+                            key="start"
+                            type="primary"
+                            disabled={
+                                syncableCount !== undefined && syncableCount === 0
+                            }
+                            onClick={handleStartSyncAll}
+                            className="bg-blue-600 hover:bg-blue-700"
+                        >
+                            {syncAllResult ? 'Sinkronkan Ulang' : 'Mulai Sinkronisasi Semua'}
+                        </AntButton>
+                    ),
                 ]}
             >
                 <div className="space-y-4 py-2">
@@ -2385,16 +2488,55 @@ export default function DealersIndex({
                     </div>
 
                     {isSyncingAll && (
-                        <div className="space-y-2 rounded-lg border border-sidebar-border bg-background p-4 text-center">
-                            <RefreshCw className="mx-auto size-6 animate-spin text-blue-600" />
-                            <p className="text-xs font-medium text-foreground">
-                                {syncAllStatus ||
-                                    'Sedang mengambil data profil dari Google Maps...'}
+                        <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/70 p-4 text-xs dark:border-blue-900/50 dark:bg-blue-950/40">
+                            <div className="flex items-center justify-between font-medium">
+                                <span className="flex items-center gap-2 text-foreground">
+                                    <RefreshCw className="size-3.5 animate-spin text-blue-600" />
+                                    <span>Memproses Sinkronisasi Showroom...</span>
+                                </span>
+                                {syncAllProgress && (
+                                    <span className="font-mono text-blue-600 dark:text-blue-400">
+                                        {syncAllProgress.current} / {syncAllProgress.total} (
+                                        {Math.round(
+                                            (syncAllProgress.current / syncAllProgress.total) * 100,
+                                        )}
+                                        %)
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Animated progress bar */}
+                            {syncAllProgress && (
+                                <div className="h-2 w-full overflow-hidden rounded-full bg-blue-200 dark:bg-blue-900/40">
+                                    <div
+                                        className="h-full bg-blue-600 transition-all duration-300 ease-out"
+                                        style={{
+                                            width: `${Math.round(
+                                                (syncAllProgress.current / syncAllProgress.total) * 100,
+                                            )}%`,
+                                        }}
+                                    />
+                                </div>
+                            )}
+
+                            <p className="truncate text-xs font-semibold text-foreground">
+                                {syncAllProgress?.currentDealerName || syncAllStatus}
                             </p>
-                            <p className="text-[11px] text-muted-foreground">
-                                Proses ini dijalankan di server. Harap tunggu
-                                hingga selesai.
-                            </p>
+
+                            <div className="flex items-center justify-between border-t border-blue-200/60 pt-2 text-[11px] text-muted-foreground dark:border-blue-900/40">
+                                <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                    ✓ Berhasil: {syncAllProgress?.success ?? 0}
+                                </span>
+                                <span className="font-medium text-destructive">
+                                    ✗ Gagal: {syncAllProgress?.failed ?? 0}
+                                </span>
+                                <span>
+                                    Sisa:{' '}
+                                    {syncAllProgress
+                                        ? Math.max(0, syncAllProgress.total - syncAllProgress.current)
+                                        : (syncableCount ?? 0)}
+                                </span>
+                            </div>
                         </div>
                     )}
 

@@ -460,6 +460,32 @@ test('dealer sync-all updates all eligible dealers', function (): void {
     ]);
 });
 
+test('syncable dealer list can be retrieved', function (): void {
+    $user = User::factory()->create();
+    $dealerWithMaps = Dealer::factory()->create([
+        'link_google_maps' => 'https://maps.app.goo.gl/test1234',
+        'nama_dealer' => 'Dealer Sukamaju',
+    ]);
+    $dealerWithoutMaps = Dealer::factory()->create([
+        'link_google_maps' => null,
+        'nama_dealer' => 'Dealer Tanpa Maps',
+    ]);
+
+    $response = $this->actingAs($user)->getJson(route('dealers.syncable'));
+
+    $response->assertOk()
+        ->assertJson([
+            'success' => true,
+        ])
+        ->assertJsonFragment([
+            'id' => $dealerWithMaps->id,
+            'nama_dealer' => 'Dealer Sukamaju',
+        ])
+        ->assertJsonMissing([
+            'id' => $dealerWithoutMaps->id,
+        ]);
+});
+
 test('dealers can be created and updated with nama_dealer_gbp and operating hours', function (): void {
     $user = User::factory()->create();
 
@@ -564,6 +590,49 @@ test('DealerSyncService parseOpeningHours accurately parses various day formats 
     expect($parsed['weekday'])->toBe("07.30\u{2013}17.00")
         ->and($parsed['saturday'])->toBe("07.30\u{2013}17.30")
         ->and($parsed['sunday'])->toBe('Tutup');
+});
+
+test('DealerSyncService parseOpeningHours parses English AM PM formats and normalizes to 24-hour dot notation', function (): void {
+    $service = app(DealerSyncService::class);
+
+    $hours = [
+        'Friday: 8.00 am–4.00 pm',
+        'Saturday: 8.00 am–2.00 pm',
+        'Sunday: 8.00 am–2.00 pm',
+        'Monday: 8.00 am–4.00 pm',
+        'Tuesday: 8.00 am–4.00 pm',
+        'Wednesday: 8.00 am–4.00 pm',
+        'Thursday: 8.00 am–4.00 pm',
+    ];
+
+    $parsed = $service->parseOpeningHours($hours);
+
+    expect($parsed['weekday'])->toBe("08.00\u{2013}16.00")
+        ->and($parsed['saturday'])->toBe("08.00\u{2013}14.00")
+        ->and($parsed['sunday'])->toBe("08.00\u{2013}14.00");
+
+    $closedSunday = [
+        'Monday: 8:30 AM – 5:00 PM',
+        'Saturday: 8:30 AM – 2:00 PM',
+        'Sunday: Closed',
+    ];
+
+    $parsedClosed = $service->parseOpeningHours($closedSunday);
+
+    expect($parsedClosed['weekday'])->toBe("08.30\u{2013}17.00")
+        ->and($parsedClosed['saturday'])->toBe("08.30\u{2013}14.00")
+        ->and($parsedClosed['sunday'])->toBe('Tutup');
+});
+
+test('DealerSyncService normalizeTimeString handles various formats including closed and 24 hours', function (): void {
+    $service = app(DealerSyncService::class);
+
+    expect($service->normalizeTimeString('8 AM–4 PM'))->toBe("08.00\u{2013}16.00")
+        ->and($service->normalizeTimeString('8.00 am-2.00 pm'))->toBe("08.00\u{2013}14.00")
+        ->and($service->normalizeTimeString('08:30 - 17:00'))->toBe("08.30\u{2013}17.00")
+        ->and($service->normalizeTimeString('Closed'))->toBe('Tutup')
+        ->and($service->normalizeTimeString('Tutup'))->toBe('Tutup')
+        ->and($service->normalizeTimeString('Open 24 hours'))->toBe('24 Jam');
 });
 
 test('dealer sync fallback extracts place name from redirected Google Maps URL when scraper is offline', function (): void {
