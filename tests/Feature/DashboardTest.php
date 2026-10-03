@@ -377,3 +377,90 @@ test('global user can filter dashboard with month=all for all-time review metric
             ->where('dealerOverview.0.rating_4', 1)
         );
 });
+
+test('global user can filter dashboard with custom start_date and end_date range', function () {
+    $admin = User::factory()->superAdmin()->create();
+    $dealer = Dealer::factory()->create([
+        'kode_dealer' => 'DLR001',
+        'nama_dealer' => 'Dealer Bintang Mataram',
+    ]);
+
+    // Review within date range (2025-06-10)
+    Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'star_rate' => 5,
+        'respon_from_owner' => true,
+        'tanggal_publish_review' => '2025-06-10 10:00:00',
+    ]);
+
+    // Review outside date range (2025-05-20)
+    Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'star_rate' => 2,
+        'respon_from_owner' => false,
+        'tanggal_publish_review' => '2025-05-20 10:00:00',
+    ]);
+
+    $response = $this->actingAs($admin)->get(route('dashboard', [
+        'start_date' => '2025-06-01',
+        'end_date' => '2025-06-30',
+    ]));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->where('startDate', '2025-06-01')
+            ->where('endDate', '2025-06-30')
+            ->has('activeRangeLabel')
+            ->where('metrics.total_reviews', 1)
+            ->where('metrics.responded_count', 1)
+            ->where('metrics.unresponded_count', 0)
+        );
+});
+
+test('dashboard respects both dealer_id and date range filters combined', function () {
+    $admin = User::factory()->superAdmin()->create();
+    $dealerA = Dealer::factory()->create(['nama_dealer' => 'Dealer A']);
+    $dealerB = Dealer::factory()->create(['nama_dealer' => 'Dealer B']);
+
+    // Dealer A review inside date range
+    Review::factory()->create([
+        'dealer_id' => $dealerA->id,
+        'star_rate' => 5,
+        'respon_from_owner' => true,
+        'tanggal_publish_review' => '2025-07-15 09:00:00',
+    ]);
+
+    // Dealer A review outside date range
+    Review::factory()->create([
+        'dealer_id' => $dealerA->id,
+        'star_rate' => 4,
+        'respon_from_owner' => true,
+        'tanggal_publish_review' => '2025-04-10 09:00:00',
+    ]);
+
+    // Dealer B review inside date range
+    Review::factory()->create([
+        'dealer_id' => $dealerB->id,
+        'star_rate' => 1,
+        'respon_from_owner' => false,
+        'tanggal_publish_review' => '2025-07-15 09:00:00',
+    ]);
+
+    $response = $this->actingAs($admin)->get(route('dashboard', [
+        'dealer_id' => (string) $dealerA->id,
+        'start_date' => '2025-07-01',
+        'end_date' => '2025-07-31',
+    ]));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dashboard')
+            ->where('selectedDealerId', (string) $dealerA->id)
+            ->where('startDate', '2025-07-01')
+            ->where('endDate', '2025-07-31')
+            ->where('metrics.total_reviews', 1)
+            ->where('metrics.responded_count', 1)
+            ->where('metrics.unresponded_count', 0)
+        );
+});

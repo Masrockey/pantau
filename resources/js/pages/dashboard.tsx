@@ -6,7 +6,9 @@ import {
     ArrowUpRight,
     BarChart3,
     Building2,
+    Calendar,
     CheckCircle2,
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
     Clock,
@@ -21,6 +23,7 @@ import {
     Star,
     TrendingUp,
     Users,
+    X,
 } from 'lucide-react';
 import React from 'react';
 import DealerMap, { MapDealer } from '@/components/dashboard/dealer-map';
@@ -60,6 +63,33 @@ import gmbClusterRoute from '@/routes/gmb-cluster';
 import monitoringFeedbackRoute from '@/routes/monitoring-feedback';
 import reviewsRoute from '@/routes/reviews';
 import syncRoute from '@/routes/reviews/sync';
+
+function formatMonthLabel(ym: string | null): string {
+    if (!ym) return '';
+    if (ym === 'all' || ym.toLowerCase() === 'all') return 'Semua Tanggal';
+    const parts = ym.split('-');
+    if (parts.length !== 2) return ym;
+    const [year, month] = parts;
+    const monthNames = [
+        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+    const monthIdx = parseInt(month, 10) - 1;
+    return `${monthNames[monthIdx] ?? month} ${year}`;
+}
+
+function formatDateShort(dateStr?: string | null): string {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const [y, m, d] = parts;
+    const monthNames = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+        'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+    ];
+    const mIdx = parseInt(m, 10) - 1;
+    return `${parseInt(d, 10)} ${monthNames[mIdx] ?? m} ${y}`;
+}
 
 interface DealerSummary {
     id: number;
@@ -130,6 +160,11 @@ interface DashboardProps {
     availableMonths?: string[];
     activeMonth?: string | null;
     prevMonth?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+    activeRangeLabel?: string;
+    prevStartDate?: string | null;
+    prevEndDate?: string | null;
     selectedDealerId: string;
     isGlobal: boolean;
     userRole: string;
@@ -159,14 +194,137 @@ export default function Dashboard({
     availableMonths = [],
     activeMonth = null,
     prevMonth = null,
+    startDate = null,
+    endDate = null,
+    activeRangeLabel = 'Semua Tanggal',
+    prevStartDate = null,
+    prevEndDate = null,
     selectedDealerId,
     isGlobal,
     userRole,
 }: DashboardProps) {
-    const handleDealerChange = (value: string) => {
+    // Date range popover state
+    const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
+    const datePickerRef = React.useRef<HTMLDivElement>(null);
+    const [customStart, setCustomStart] = React.useState(startDate || '');
+    const [customEnd, setCustomEnd] = React.useState(endDate || '');
+
+    React.useEffect(() => {
+        if (startDate) setCustomStart(startDate);
+        if (endDate) setCustomEnd(endDate);
+    }, [startDate, endDate]);
+
+    React.useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
+                setIsDatePickerOpen(false);
+            }
+        };
+        if (isDatePickerOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isDatePickerOpen]);
+
+    const formatDateToYMD = (d: Date): string => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const applyDateFilter = (params: {
+        start_date?: string | null;
+        end_date?: string | null;
+        month?: string | null;
+    }) => {
+        const currentParams = new URLSearchParams(window.location.search);
+
+        if (params.month) {
+            currentParams.set('month', params.month);
+            currentParams.delete('start_date');
+            currentParams.delete('end_date');
+        } else if (params.start_date && params.end_date) {
+            currentParams.set('start_date', params.start_date);
+            currentParams.set('end_date', params.end_date);
+            currentParams.delete('month');
+        } else {
+            currentParams.delete('start_date');
+            currentParams.delete('end_date');
+            currentParams.delete('month');
+        }
+
+        setIsDatePickerOpen(false);
         router.get(
             dashboard(),
-            value ? { dealer_id: value } : {},
+            Object.fromEntries(currentParams.entries()),
+            { preserveState: true, preserveScroll: true }
+        );
+    };
+
+    const handleSelectAll = () => {
+        applyDateFilter({ month: 'all' });
+    };
+
+    const handleSelectPreset = (preset: 'today' | '7days' | '30days' | 'thisMonth' | 'lastMonth') => {
+        const now = new Date();
+        if (preset === 'today') {
+            const todayStr = formatDateToYMD(now);
+            applyDateFilter({ start_date: todayStr, end_date: todayStr });
+        } else if (preset === '7days') {
+            const d = new Date();
+            d.setDate(d.getDate() - 6);
+            applyDateFilter({ start_date: formatDateToYMD(d), end_date: formatDateToYMD(now) });
+        } else if (preset === '30days') {
+            const d = new Date();
+            d.setDate(d.getDate() - 29);
+            applyDateFilter({ start_date: formatDateToYMD(d), end_date: formatDateToYMD(now) });
+        } else if (preset === 'thisMonth') {
+            const start = new Date(now.getFullYear(), now.getMonth(), 1);
+            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            applyDateFilter({ start_date: formatDateToYMD(start), end_date: formatDateToYMD(end) });
+        } else if (preset === 'lastMonth') {
+            const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), 0);
+            applyDateFilter({ start_date: formatDateToYMD(start), end_date: formatDateToYMD(end) });
+        }
+    };
+
+    const handleSelectMonth = (m: string) => {
+        applyDateFilter({ month: m });
+    };
+
+    const handleApplyCustomRange = () => {
+        if (!customStart || !customEnd) return;
+        applyDateFilter({ start_date: customStart, end_date: customEnd });
+    };
+
+    const isFilterActive = Boolean(startDate && endDate) || (Boolean(activeMonth) && activeMonth !== 'all');
+
+    const displayDateLabel = React.useMemo(() => {
+        if (activeRangeLabel) return activeRangeLabel;
+        if (startDate && endDate) {
+            return startDate === endDate
+                ? formatDateShort(startDate)
+                : `${formatDateShort(startDate)} - ${formatDateShort(endDate)}`;
+        }
+        if (activeMonth === 'all') return 'Semua Tanggal';
+        if (activeMonth) return formatMonthLabel(activeMonth);
+        return 'Semua Tanggal';
+    }, [activeRangeLabel, startDate, endDate, activeMonth]);
+
+    const handleDealerChange = (value: string) => {
+        const currentParams = new URLSearchParams(window.location.search);
+        if (value) {
+            currentParams.set('dealer_id', value);
+        } else {
+            currentParams.delete('dealer_id');
+        }
+        router.get(
+            dashboard(),
+            Object.fromEntries(currentParams.entries()),
             { preserveState: true, preserveScroll: true }
         );
     };
@@ -223,6 +381,168 @@ export default function Dashboard({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                        {/* Date Range Picker Popover */}
+                        <div className="relative" ref={datePickerRef}>
+                            <button
+                                type="button"
+                                onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
+                                className={`flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-xs font-medium shadow-2xs transition-colors cursor-pointer ${
+                                    isFilterActive
+                                        ? 'border-primary/60 bg-primary/10 text-primary hover:bg-primary/15'
+                                        : 'border-input bg-background hover:bg-muted/40 text-foreground'
+                                }`}
+                                title="Pilih rentang tanggal atau bulan"
+                            >
+                                <Calendar className="size-3.5 text-primary" />
+                                <span className="truncate max-w-[170px] sm:max-w-[240px] font-semibold">
+                                    {displayDateLabel}
+                                </span>
+                                <ChevronDown
+                                    className={`size-3 text-muted-foreground transition-transform duration-200 ${
+                                        isDatePickerOpen ? 'rotate-180' : ''
+                                    }`}
+                                />
+                            </button>
+
+                            {isDatePickerOpen && (
+                                <div className="absolute right-0 top-full mt-1.5 z-50 w-[320px] sm:w-[380px] rounded-xl border border-border bg-popover text-popover-foreground shadow-xl p-3.5 space-y-3">
+                                    {/* Header */}
+                                    <div className="flex items-center justify-between pb-2 border-b">
+                                        <div className="flex items-center gap-1.5">
+                                            <Calendar className="size-4 text-primary" />
+                                            <span className="font-bold text-xs">Pilih Rentang Tanggal</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsDatePickerOpen(false)}
+                                            className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                                        >
+                                            <X className="size-3.5" />
+                                        </button>
+                                    </div>
+
+                                    {/* Quick Presets */}
+                                    <div className="space-y-1.5">
+                                        <span className="text-[11px] font-semibold text-muted-foreground">Pilihan Cepat:</span>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                                            <Button
+                                                type="button"
+                                                variant={!startDate && !endDate && (!activeMonth || activeMonth === 'all') ? 'default' : 'outline'}
+                                                size="sm"
+                                                onClick={handleSelectAll}
+                                                className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                            >
+                                                Semua Tanggal
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleSelectPreset('today')}
+                                                className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                            >
+                                                Hari Ini
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleSelectPreset('7days')}
+                                                className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                            >
+                                                7 Hari Terakhir
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleSelectPreset('30days')}
+                                                className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                            >
+                                                30 Hari Terakhir
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleSelectPreset('thisMonth')}
+                                                className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                            >
+                                                Bulan Ini
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleSelectPreset('lastMonth')}
+                                                className="h-7 text-[11px] px-2 justify-start truncate cursor-pointer"
+                                            >
+                                                Bulan Lalu
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {/* Custom Date Range */}
+                                    <div className="space-y-2 pt-2 border-t">
+                                        <span className="text-[11px] font-semibold text-muted-foreground">Kustom Rentang Tanggal:</span>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] text-muted-foreground font-medium">Dari Tanggal</label>
+                                                <input
+                                                    type="date"
+                                                    value={customStart}
+                                                    onChange={(e) => setCustomStart(e.target.value)}
+                                                    className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] text-muted-foreground font-medium">Sampai Tanggal</label>
+                                                <input
+                                                    type="date"
+                                                    value={customEnd}
+                                                    onChange={(e) => setCustomEnd(e.target.value)}
+                                                    className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                                />
+                                            </div>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={handleApplyCustomRange}
+                                            disabled={!customStart || !customEnd}
+                                            className="w-full h-8 text-xs font-semibold cursor-pointer"
+                                        >
+                                            Terapkan Rentang Tanggal
+                                        </Button>
+                                    </div>
+
+                                    {/* Specific Month */}
+                                    {availableMonths.length > 0 && (
+                                        <div className="space-y-1 pt-2 border-t">
+                                            <span className="text-[11px] font-semibold text-muted-foreground">Pilih Bulan Spesifik:</span>
+                                            <select
+                                                value={!startDate && !endDate && activeMonth && activeMonth !== 'all' ? activeMonth : ''}
+                                                onChange={(e) => {
+                                                    if (e.target.value) {
+                                                        handleSelectMonth(e.target.value);
+                                                    }
+                                                }}
+                                                className="w-full h-8 text-xs rounded-md border border-input bg-background px-2 text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                            >
+                                                <option value="" disabled>-- Pilih Bulan --</option>
+                                                {availableMonths.map((m) => (
+                                                    <option key={m} value={m}>
+                                                        {formatMonthLabel(m)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Showroom Selector */}
                         {isGlobal && dealersList.length > 0 && (
                             <div className="flex items-center gap-2">
                                 <AntSelect
@@ -256,6 +576,28 @@ export default function Dashboard({
                         )}
                     </div>
                 </div>
+
+                {/* Active Filter Indicator Badge if filtered */}
+                {isFilterActive && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                            <Filter className="size-3.5 text-primary shrink-0" />
+                            <span>
+                                Memfilter data ulasan berdasarkan periode:{' '}
+                                <strong className="text-foreground font-semibold">{displayDateLabel}</strong>
+                            </span>
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleSelectAll}
+                            className="h-6 px-2 text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1 cursor-pointer"
+                        >
+                            <X className="size-3" />
+                            Reset ke Semua Tanggal
+                        </Button>
+                    </div>
+                )}
 
                 {/* Showroom Scoped Context Banner if dealer role */}
                 {!isGlobal && currentDealer && (

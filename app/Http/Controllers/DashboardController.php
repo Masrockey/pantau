@@ -31,12 +31,99 @@ class DashboardController extends Controller
             $dealerScopeId = $userDealerId;
         }
 
+        $selectedMonth = $request->string('month')->trim()->value();
+        $startDateParam = $request->string('start_date')->trim()->value();
+        $endDateParam = $request->string('end_date')->trim()->value();
+
+        $availableMonths = Review::query()
+            ->selectRaw('substr(tanggal_publish_review, 1, 7) as ym')
+            ->whereNotNull('tanggal_publish_review')
+            ->groupBy('ym')
+            ->orderByDesc('ym')
+            ->pluck('ym')
+            ->filter()
+            ->values()
+            ->all();
+
+        $currentMonth = date('Y-m');
+
+        if (! in_array($currentMonth, $availableMonths, true)) {
+            array_unshift($availableMonths, $currentMonth);
+        }
+
+        $isAllTime = ($selectedMonth === 'all' || $startDateParam === 'all' || ($startDateParam === '' && $endDateParam === '' && $selectedMonth === ''));
+
+        $startDate = null;
+        $endDate = null;
+        $prevStartDate = null;
+        $prevEndDate = null;
+        $activeRangeLabel = 'Semua Tanggal';
+        $activeMonth = 'all';
+        $prevMonth = null;
+
+        if ($isAllTime) {
+            $startDate = null;
+            $endDate = null;
+            $activeRangeLabel = 'Semua Tanggal';
+            $activeMonth = 'all';
+            $prevMonth = null;
+        } elseif ($startDateParam !== '' || $endDateParam !== '') {
+            try {
+                $rawStart = $startDateParam !== '' ? $startDateParam : $endDateParam;
+                $rawEnd = $endDateParam !== '' ? $endDateParam : $startDateParam;
+                $startDate = Carbon::parse($rawStart)->toDateString();
+                $endDate = Carbon::parse($rawEnd)->toDateString();
+
+                if ($startDate > $endDate) {
+                    [$startDate, $endDate] = [$endDate, $startDate];
+                }
+
+                $diffDays = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
+                $prevEndDate = Carbon::parse($startDate)->subDay()->toDateString();
+                $prevStartDate = Carbon::parse($prevEndDate)->subDays($diffDays - 1)->toDateString();
+
+                $startCarbon = Carbon::parse($startDate);
+                $endCarbon = Carbon::parse($endDate);
+
+                if ($startDate === $endDate) {
+                    $activeRangeLabel = $startCarbon->translatedFormat('d M Y');
+                } else {
+                    $activeRangeLabel = $startCarbon->translatedFormat('d M Y').' - '.$endCarbon->translatedFormat('d M Y');
+                }
+
+                $activeMonth = substr($startDate, 0, 7);
+                $prevMonth = substr($prevStartDate, 0, 7);
+            } catch (\Throwable) {
+                $isAllTime = true;
+                $startDate = null;
+                $endDate = null;
+                $activeRangeLabel = 'Semua Tanggal';
+                $activeMonth = 'all';
+            }
+        } elseif ($selectedMonth !== '') {
+            $activeMonth = in_array($selectedMonth, $availableMonths, true) ? $selectedMonth : ($availableMonths[0] ?? $currentMonth);
+            $monthCarbon = Carbon::parse($activeMonth.'-01');
+            $startDate = $monthCarbon->copy()->startOfMonth()->toDateString();
+            $endDate = $monthCarbon->copy()->endOfMonth()->toDateString();
+
+            $prevMonthCarbon = $monthCarbon->copy()->subMonth();
+            $prevMonth = $prevMonthCarbon->format('Y-m');
+            $prevStartDate = $prevMonthCarbon->copy()->startOfMonth()->toDateString();
+            $prevEndDate = $prevMonthCarbon->copy()->endOfMonth()->toDateString();
+
+            $activeRangeLabel = $monthCarbon->translatedFormat('F Y');
+        }
+
         $reviewQuery = Review::query();
 
         if ($dealerScopeId) {
             $reviewQuery->where('dealer_id', $dealerScopeId);
         } elseif (! $isGlobal) {
             $reviewQuery->whereRaw('1 = 0');
+        }
+
+        if (! $isAllTime && $startDate && $endDate) {
+            $reviewQuery->whereBetween('tanggal_publish_review', [$startDate, $endDate.' 23:59:59']);
         }
 
         $totalReviews = (int) (clone $reviewQuery)->count();
@@ -69,6 +156,12 @@ class DashboardController extends Controller
         $dealersWithMaps = 0;
         $currentDealer = null;
 
+        $reviewsCountFilter = function ($q) use ($isAllTime, $startDate, $endDate) {
+            if (! $isAllTime && $startDate && $endDate) {
+                $q->whereBetween('tanggal_publish_review', [$startDate, $endDate.' 23:59:59']);
+            }
+        };
+
         if ($isGlobal && ! $dealerScopeId) {
             $totalDealers = Dealer::count();
             $dealersWithMaps = Dealer::whereNotNull('link_google_maps')
@@ -76,7 +169,7 @@ class DashboardController extends Controller
                 ->count();
 
             $topDealers = Dealer::query()
-                ->withCount('reviews')
+                ->withCount(['reviews' => $reviewsCountFilter])
                 ->whereNotNull('star_rate')
                 ->orderByDesc('star_rate')
                 ->orderByDesc('total_review')
@@ -85,8 +178,13 @@ class DashboardController extends Controller
 
             $needsAttentionDealers = Dealer::query()
                 ->withCount([
-                    'reviews',
-                    'reviews as unresponded_count' => fn ($q) => $q->where('respon_from_owner', false),
+                    'reviews' => $reviewsCountFilter,
+                    'reviews as unresponded_count' => function ($q) use ($isAllTime, $startDate, $endDate) {
+                        $q->where('respon_from_owner', false);
+                        if (! $isAllTime && $startDate && $endDate) {
+                            $q->whereBetween('tanggal_publish_review', [$startDate, $endDate.' 23:59:59']);
+                        }
+                    },
                 ])
                 ->whereNotNull('star_rate')
                 ->where('star_rate', '<', 4.8)
@@ -95,8 +193,13 @@ class DashboardController extends Controller
                 ->get(['id', 'kode_dealer', 'nama_dealer', 'star_rate', 'total_review', 'link_google_maps']);
         } elseif ($dealerScopeId) {
             $currentDealer = Dealer::withCount([
-                'reviews',
-                'reviews as unresponded_count' => fn ($q) => $q->where('respon_from_owner', false),
+                'reviews' => $reviewsCountFilter,
+                'reviews as unresponded_count' => function ($q) use ($isAllTime, $startDate, $endDate) {
+                    $q->where('respon_from_owner', false);
+                    if (! $isAllTime && $startDate && $endDate) {
+                        $q->whereBetween('tanggal_publish_review', [$startDate, $endDate.' 23:59:59']);
+                    }
+                },
             ])->find($dealerScopeId);
         }
 
@@ -144,10 +247,16 @@ class DashboardController extends Controller
 
         $dealerIdsForMap = $dealersForMap->pluck('id')->all();
 
-        $reviewsByDealer = Review::query()
+        $reviewsByDealerQuery = Review::query()
             ->selectRaw('dealer_id, round(star_rate) as star, count(*) as count, sum(case when respon_from_owner = 1 then 1 else 0 end) as responded_count')
             ->whereIn('dealer_id', $dealerIdsForMap)
-            ->whereNotNull('star_rate')
+            ->whereNotNull('star_rate');
+
+        if (! $isAllTime && $startDate && $endDate) {
+            $reviewsByDealerQuery->whereBetween('tanggal_publish_review', [$startDate, $endDate.' 23:59:59']);
+        }
+
+        $reviewsByDealer = $reviewsByDealerQuery
             ->groupByRaw('dealer_id, round(star_rate)')
             ->get()
             ->groupBy('dealer_id');
@@ -202,57 +311,19 @@ class DashboardController extends Controller
 
         $dealerOverview = [];
         $overviewSummary = null;
-        $availableMonths = [];
-        $activeMonth = null;
         $monitoringFeedback = [];
         $monitoringSummary = null;
-        $prevMonth = null;
 
         if ($isGlobal) {
-            $selectedMonth = $request->string('month')->trim()->value();
-
-            $availableMonths = Review::query()
-                ->selectRaw('substr(tanggal_publish_review, 1, 7) as ym')
-                ->whereNotNull('tanggal_publish_review')
-                ->groupBy('ym')
-                ->orderByDesc('ym')
-                ->pluck('ym')
-                ->filter()
-                ->values()
-                ->all();
-
-            $currentMonth = date('Y-m');
-
-            if (! in_array($currentMonth, $availableMonths, true)) {
-                array_unshift($availableMonths, $currentMonth);
-            }
-
-            $isAllTime = ($selectedMonth === 'all');
-
             if ($isAllTime) {
-                $activeMonth = 'all';
-                $prevMonth = null;
                 $monthlyReviewsQuery = Review::query();
                 $prevMonthlyReviewsQuery = null;
             } else {
-                $activeMonth = ($selectedMonth !== '' && in_array($selectedMonth, $availableMonths, true))
-                    ? $selectedMonth
-                    : (in_array($currentMonth, $availableMonths, true) ? $currentMonth : ($availableMonths[0] ?? $currentMonth));
-
-                $monthCarbon = Carbon::parse($activeMonth.'-01');
-                $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
-                $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString().' 23:59:59';
-
-                $prevMonthCarbon = $monthCarbon->copy()->subMonth();
-                $prevMonth = $prevMonthCarbon->format('Y-m');
-                $startOfPrevMonth = $prevMonthCarbon->copy()->startOfMonth()->toDateString();
-                $endOfPrevMonth = $prevMonthCarbon->copy()->endOfMonth()->toDateString().' 23:59:59';
-
                 $monthlyReviewsQuery = Review::query()
-                    ->whereBetween('tanggal_publish_review', [$startOfMonth, $endOfMonth]);
+                    ->whereBetween('tanggal_publish_review', [$startDate, $endDate.' 23:59:59']);
 
                 $prevMonthlyReviewsQuery = Review::query()
-                    ->whereBetween('tanggal_publish_review', [$startOfPrevMonth, $endOfPrevMonth]);
+                    ->whereBetween('tanggal_publish_review', [$prevStartDate, $prevEndDate.' 23:59:59']);
             }
 
             $overviewDealersQuery = Dealer::query()
@@ -516,24 +587,8 @@ class DashboardController extends Controller
             ->whereNotNull('review')
             ->where('review', '!=', '');
 
-        $allTimeReviews = (clone $wordReviewsQuery)->pluck('review');
-        $wordCloudAllTime = $this->extractWordCloud($allTimeReviews, 140);
-
-        $wordCloudData = $wordCloudAllTime;
-        if ($isGlobal && $activeMonth && $activeMonth !== 'all') {
-            $monthCarbon = Carbon::parse($activeMonth.'-01');
-            $startOfMonth = $monthCarbon->copy()->startOfMonth()->toDateString();
-            $endOfMonth = $monthCarbon->copy()->endOfMonth()->toDateString().' 23:59:59';
-
-            $monthlyReviews = (clone $wordReviewsQuery)
-                ->whereBetween('tanggal_publish_review', [$startOfMonth, $endOfMonth])
-                ->pluck('review');
-
-            $monthlyWords = $this->extractWordCloud($monthlyReviews, 140);
-            if (! empty($monthlyWords)) {
-                $wordCloudData = $monthlyWords;
-            }
-        }
+        $wordCloudData = $this->extractWordCloud($wordReviewsQuery->pluck('review'), 140);
+        $wordCloudAllTime = $wordCloudData;
 
         // GMB Cluster Quadrant Analysis
         $clusterDealersQuery = Dealer::query()
@@ -646,6 +701,11 @@ class DashboardController extends Controller
             'availableMonths' => $availableMonths,
             'activeMonth' => $activeMonth,
             'prevMonth' => $prevMonth,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'activeRangeLabel' => $activeRangeLabel,
+            'prevStartDate' => $prevStartDate,
+            'prevEndDate' => $prevEndDate,
             'selectedDealerId' => $dealerScopeId ? (string) $dealerScopeId : '',
             'isGlobal' => $isGlobal,
             'userRole' => $user?->role?->value ?? (string) ($user?->role ?? ''),
