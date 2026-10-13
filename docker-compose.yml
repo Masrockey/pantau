@@ -6,12 +6,12 @@ services:
     container_name: pantau-laravel-app
     restart: unless-stopped
     ports:
-      - "8080:80"
+      - "8016:80"
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
-      APP_URL: http://localhost:8080
-      GBP_API_BASE_URL: http://gbpscrap:3000
+      APP_URL: http://localhost:8016
+      GBP_API_BASE_URL: http://gbpscrap:3016
     env_file:
       - .env
     volumes:
@@ -31,13 +31,13 @@ services:
     container_name: pantau-gbpscrap
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3016:3016"
     environment:
-      PORT: 3000
+      PORT: 3016
       HOST: 0.0.0.0
       HEADLESS: "true"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3016/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
       interval: 10s
       timeout: 5s
       retries: 5

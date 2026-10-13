@@ -24,7 +24,7 @@ php artisan migrate --graceful --no-interaction || true
 php artisan queue:listen --tries=1 --timeout=0 > /var/www/html/storage/logs/queue.log 2>&1 &
 
 echo "=========================================================="
-echo "  PANTAU Laravel App is ready on http://localhost:8080"
+echo "  PANTAU Laravel App is ready on http://localhost:8016"
 echo "=========================================================="
 
 # Start Apache in foreground
