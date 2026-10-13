@@ -43,3 +43,11 @@ yarn-error.log
 /boost.json
 /opencode.json
 /opencode.jsonc
+
+# gbpscrap
+node_modules/
+/gbpscrap/node_modules/
+/gbpscrap/dist/
+/gbpscrap/storage/
+/gbpscrap/.env
+/gbpscrap/*.log

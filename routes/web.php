@@ -42,6 +42,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('reviews/sync/schedules/{schedule}/run', [ScrapingScheduleController::class, 'run'])->name('reviews.sync.schedules.run');
     Route::get('reviews/template', [ReviewController::class, 'template'])->name('reviews.template');
     Route::post('reviews/import', [ReviewController::class, 'import'])->name('reviews.import');
+    Route::get('reviews/export', [ReviewController::class, 'export'])->name('reviews.export');
     Route::resource('reviews', ReviewController::class)->except(['create', 'show', 'edit']);
 });
 

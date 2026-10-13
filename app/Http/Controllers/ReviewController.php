@@ -12,6 +12,7 @@ use App\Services\GoogleReviewScraperService;
 use App\Services\ReviewExcelService;
 use App\Services\SyncReviewServerService;
 use Exception;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,9 +26,11 @@ use Throwable;
 class ReviewController extends Controller
 {
     /**
-     * Display a listing of reviews.
+     * Build filtered review query based on request parameters.
+     *
+     * @return Builder<Review>
      */
-    public function index(Request $request): Response
+    protected function getFilteredQuery(Request $request, bool $withDealerRelation = true)
     {
         $user = $request->user();
         $isGlobal = $user?->hasGlobalAccess() ?? false;
@@ -39,9 +42,13 @@ class ReviewController extends Controller
             : (string) ($userDealerId ?? '');
         $starFilter = $request->string('star_rate')->trim()->value();
         $responFilter = $request->string('respon_from_owner')->trim()->value();
+        $startDate = $request->string('start_date')->trim()->value();
+        $endDate = $request->string('end_date')->trim()->value();
 
-        $reviews = Review::query()
-            ->with(['dealer:id,kode_dealer,nama_dealer'])
+        return Review::query()
+            ->when($withDealerRelation, function ($query): void {
+                $query->with(['dealer:id,kode_dealer,nama_dealer']);
+            })
             ->when(! $isGlobal, function ($query) use ($userDealerId): void {
                 if ($userDealerId) {
                     $query->where('dealer_id', $userDealerId);
@@ -74,6 +81,33 @@ class ReviewController extends Controller
                     $query->where('respon_from_owner', false);
                 }
             })
+            ->when($startDate !== '', function ($query) use ($startDate): void {
+                $query->whereDate('tanggal_publish_review', '>=', $startDate);
+            })
+            ->when($endDate !== '', function ($query) use ($endDate): void {
+                $query->whereDate('tanggal_publish_review', '<=', $endDate);
+            });
+    }
+
+    /**
+     * Display a listing of reviews.
+     */
+    public function index(Request $request): Response
+    {
+        $user = $request->user();
+        $isGlobal = $user?->hasGlobalAccess() ?? false;
+        $userDealerId = $user?->dealer_id;
+
+        $search = $request->string('search')->trim()->value();
+        $dealerFilter = $isGlobal
+            ? $request->string('dealer_id')->trim()->value()
+            : (string) ($userDealerId ?? '');
+        $starFilter = $request->string('star_rate')->trim()->value();
+        $responFilter = $request->string('respon_from_owner')->trim()->value();
+        $startDate = $request->string('start_date')->trim()->value();
+        $endDate = $request->string('end_date')->trim()->value();
+
+        $reviews = $this->getFilteredQuery($request, true)
             ->latest('tanggal_publish_review')
             ->latest('id')
             ->paginate(10)
@@ -87,7 +121,9 @@ class ReviewController extends Controller
                     $query->whereRaw('1 = 0');
                 }
             })
-            ->when($isGlobal && $dealerFilter !== '', fn ($q) => $q->where('dealer_id', $dealerFilter));
+            ->when($isGlobal && $dealerFilter !== '', fn ($q) => $q->where('dealer_id', $dealerFilter))
+            ->when($startDate !== '', fn ($q) => $q->whereDate('tanggal_publish_review', '>=', $startDate))
+            ->when($endDate !== '', fn ($q) => $q->whereDate('tanggal_publish_review', '<=', $endDate));
 
         $stats = [
             'total' => (clone $baseStatsQuery)->count(),
@@ -115,6 +151,8 @@ class ReviewController extends Controller
                 'dealer_id' => $isGlobal ? $dealerFilter : '',
                 'star_rate' => $starFilter,
                 'respon_from_owner' => $responFilter,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
             ],
             'canManageAll' => $isGlobal,
         ]);
@@ -504,6 +542,9 @@ class ReviewController extends Controller
     /**
      * Download the review Excel template.
      */
+    /**
+     * Download the review Excel template.
+     */
     public function template(Request $request, ReviewExcelService $excelService): SymfonyResponse
     {
         $content = $excelService->generateTemplateXlsx();
@@ -511,6 +552,26 @@ class ReviewController extends Controller
         return response($content, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="template_review.xlsx"',
+            'Content-Length' => (string) strlen($content),
+        ]);
+    }
+
+    /**
+     * Export reviews to XLSX spreadsheet based on active filters.
+     */
+    public function export(Request $request, ReviewExcelService $excelService): SymfonyResponse
+    {
+        $reviews = $this->getFilteredQuery($request, true)
+            ->latest('tanggal_publish_review')
+            ->latest('id')
+            ->get();
+
+        $content = $excelService->export($reviews);
+        $filename = 'reviews_export_'.now()->format('Ymd_His').'.xlsx';
+
+        return response($content, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             'Content-Length' => (string) strlen($content),
         ]);
     }

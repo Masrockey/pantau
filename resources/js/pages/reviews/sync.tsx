@@ -395,8 +395,8 @@ export default function SyncReviewsPage({
     const defaultDealer = canManageAll
         ? 'all'
         : dealers[0]?.id
-          ? String(dealers[0].id)
-          : '';
+            ? String(dealers[0].id)
+            : '';
     const [selectedDealerId, setSelectedDealerId] = useState<string>(defaultDealer);
     const [maxReviews, setMaxReviews] = useState<number | string>(50);
     const [sortBy, setSortBy] = useState<string>('newest');
@@ -794,23 +794,21 @@ export default function SyncReviewsPage({
 
                 {/* Scraper Health Banner */}
                 <div
-                    className={`flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
-                        scraperOnline === true
+                    className={`flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${scraperOnline === true
                             ? 'border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-950/20'
                             : scraperOnline === false
-                              ? 'border-rose-500/30 bg-rose-500/5 dark:bg-rose-950/20'
-                              : 'border-sidebar-border bg-card'
-                    }`}
+                                ? 'border-rose-500/30 bg-rose-500/5 dark:bg-rose-950/20'
+                                : 'border-sidebar-border bg-card'
+                        }`}
                 >
                     <div className="flex items-center gap-3">
                         <div
-                            className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
-                                scraperOnline === true
+                            className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${scraperOnline === true
                                     ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                                     : scraperOnline === false
-                                      ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                                      : 'bg-muted text-muted-foreground'
-                            }`}
+                                        ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                                        : 'bg-muted text-muted-foreground'
+                                }`}
                         >
                             {scraperOnline === true ? (
                                 <CheckCircle2 className="size-5" />
@@ -826,8 +824,8 @@ export default function SyncReviewsPage({
                                     {scraperOnline === true
                                         ? 'Server Google Online'
                                         : scraperOnline === false
-                                          ? 'Server Google Tidak Aktif'
-                                          : 'Memeriksa Server Google...'}
+                                            ? 'Server Google Tidak Aktif'
+                                            : 'Memeriksa Server Google...'}
                                 </span>
                                 {scraperOnline === true && (
                                     <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -837,8 +835,8 @@ export default function SyncReviewsPage({
                                 {scraperOnline === true
                                     ? 'API Server aktif dan siap mengekstrak data ulasan.'
                                     : scraperOnline === false
-                                      ? 'Pastikan Google service sudah dinyalakan sebelum memulai sinkronisasi.'
-                                      : 'Mengecek konektivitas backend...'}
+                                        ? 'Pastikan Google service sudah dinyalakan sebelum memulai sinkronisasi.'
+                                        : 'Mengecek konektivitas backend...'}
                             </p>
                         </div>
                     </div>
@@ -1210,12 +1208,12 @@ export default function SyncReviewsPage({
                                             {bulkProgress
                                                 ? `Showroom ${bulkProgress.current} dari ${bulkProgress.total}: ${bulkProgress.currentDealerName}`
                                                 : isRunning
-                                                  ? 'Sedang mengekstrak data dari Google Maps...'
-                                                  : syncState === 'completed'
-                                                    ? 'Proses sinkronisasi telah selesai'
-                                                    : syncState === 'cancelled'
-                                                      ? 'Proses sinkronisasi dihentikan'
-                                                      : 'Menunggu perintah sinkronisasi'}
+                                                    ? 'Sedang mengekstrak data dari Google Maps...'
+                                                    : syncState === 'completed'
+                                                        ? 'Proses sinkronisasi telah selesai'
+                                                        : syncState === 'cancelled'
+                                                            ? 'Proses sinkronisasi dihentikan'
+                                                            : 'Menunggu perintah sinkronisasi'}
                                         </span>
                                         <span className="font-mono font-medium">{progressPercent}%</span>
                                     </div>
@@ -1225,17 +1223,17 @@ export default function SyncReviewsPage({
                                             syncState === 'failed'
                                                 ? 'exception'
                                                 : syncState === 'completed'
-                                                  ? 'success'
-                                                  : isRunning
-                                                    ? 'active'
-                                                    : 'normal'
+                                                    ? 'success'
+                                                    : isRunning
+                                                        ? 'active'
+                                                        : 'normal'
                                         }
                                         strokeColor={
                                             syncState === 'failed'
                                                 ? '#ef4444'
                                                 : syncState === 'completed'
-                                                  ? '#10b981'
-                                                  : { '0%': '#e60012', '100%': '#ff4d4f' }
+                                                    ? '#10b981'
+                                                    : { '0%': '#e60012', '100%': '#ff4d4f' }
                                         }
                                         showInfo={false}
                                     />
@@ -1243,13 +1241,12 @@ export default function SyncReviewsPage({
 
                                 {syncMessage && (
                                     <div
-                                        className={`rounded-lg p-3 text-xs flex items-start gap-2 ${
-                                            syncState === 'failed'
+                                        className={`rounded-lg p-3 text-xs flex items-start gap-2 ${syncState === 'failed'
                                                 ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
                                                 : syncState === 'completed'
-                                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                                                  : 'bg-muted/60 text-foreground'
-                                        }`}
+                                                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                                    : 'bg-muted/60 text-foreground'
+                                            }`}
                                     >
                                         <Info className="size-4 shrink-0 mt-0.5" />
                                         <span className="leading-relaxed">{syncMessage}</span>
@@ -1294,7 +1291,7 @@ export default function SyncReviewsPage({
                             <CardHeader className="flex flex-row items-center justify-between pb-2">
                                 <div className="flex items-center gap-2">
                                     <Terminal className="size-4 text-muted-foreground" />
-                                    <CardTitle className="text-sm">Log Aktivitas Scraper</CardTitle>
+                                    <CardTitle className="text-sm">Log Aktivitas Sync</CardTitle>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     <Button
@@ -1339,10 +1336,10 @@ export default function SyncReviewsPage({
                                                         log.type === 'error'
                                                             ? 'text-rose-400 font-semibold'
                                                             : log.type === 'warn'
-                                                              ? 'text-amber-400'
-                                                              : log.type === 'success'
-                                                                ? 'text-emerald-400'
-                                                                : 'text-zinc-300'
+                                                                ? 'text-amber-400'
+                                                                : log.type === 'success'
+                                                                    ? 'text-emerald-400'
+                                                                    : 'text-zinc-300'
                                                     }
                                                 >
                                                     {log.message}
@@ -1441,10 +1438,10 @@ export default function SyncReviewsPage({
                                                         {sched.sort_by === 'newest'
                                                             ? 'Terkini'
                                                             : sched.sort_by === 'highest'
-                                                            ? 'Rating Tertinggi'
-                                                            : sched.sort_by === 'lowest'
-                                                            ? 'Rating Terendah'
-                                                            : 'Paling Relevan'}
+                                                                ? 'Rating Tertinggi'
+                                                                : sched.sort_by === 'lowest'
+                                                                    ? 'Rating Terendah'
+                                                                    : 'Paling Relevan'}
                                                     </AntTag>
                                                 </td>
 
@@ -1731,10 +1728,10 @@ export default function SyncReviewsPage({
                                         {scheduleForm.interval_unit === 'minute'
                                             ? 'Menit'
                                             : scheduleForm.interval_unit === 'hour'
-                                            ? 'Jam'
-                                            : scheduleForm.interval_unit === 'day'
-                                            ? 'Hari'
-                                            : 'Minggu'}
+                                                ? 'Jam'
+                                                : scheduleForm.interval_unit === 'day'
+                                                    ? 'Hari'
+                                                    : 'Minggu'}
                                     </strong>
                                     .
                                 </p>

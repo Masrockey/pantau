@@ -957,4 +957,154 @@ class ReviewExcelService
 
         return $content;
     }
+
+    /**
+     * Export collection or array of reviews to a clean, well-formatted XLSX string.
+     *
+     * @param  iterable<Review>  $reviews
+     */
+    public function export(iterable $reviews): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'xlsx_rev_exp');
+        $zip = new ZipArchive;
+        $zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>');
+
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>');
+
+        $zip->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Data Review" sheetId="1" r:id="rId1"/></sheets>
+</workbook>');
+
+        $zip->addFromString('xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>');
+
+        $stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="2">
+<font><name val="Calibri"/><sz val="11"/></font>
+<font><b/><color rgb="FFFFFFFF"/><name val="Calibri"/><sz val="11"/></font>
+</fonts>
+<fills count="3">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFDC2626"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/></border>
+<border>
+<left style="thin"><color rgb="FFD1D5DB"/></left>
+<right style="thin"><color rgb="FFD1D5DB"/></right>
+<top style="thin"><color rgb="FFD1D5DB"/></top>
+<bottom style="thin"><color rgb="FFD1D5DB"/></bottom>
+</border>
+</borders>
+<cellStyleXfs count="1"><xf/></cellStyleXfs>
+<cellXfs count="4">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+<alignment horizontal="center" vertical="center" wrapText="1"/>
+</xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1">
+<alignment horizontal="center" vertical="center"/>
+</xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1">
+<alignment vertical="center"/>
+</xf>
+</cellXfs>
+</styleSheet>';
+        $zip->addFromString('xl/styles.xml', $stylesXml);
+
+        $headers = [
+            'A' => ['title' => 'NO', 'width' => 8],
+            'B' => ['title' => 'KODE DEALER', 'width' => 15],
+            'C' => ['title' => 'NAMA DEALER', 'width' => 32],
+            'D' => ['title' => 'NAMA REVIEWER', 'width' => 25],
+            'E' => ['title' => 'TANGGAL REVIEW', 'width' => 16],
+            'F' => ['title' => 'STAR RATE', 'width' => 12],
+            'G' => ['title' => 'REVIEW', 'width' => 45],
+            'H' => ['title' => 'RESPON OWNER', 'width' => 16],
+            'I' => ['title' => 'TANGGAL RESPON', 'width' => 16],
+            'J' => ['title' => 'RESPON', 'width' => 45],
+            'K' => ['title' => 'GOOGLE REVIEW URL', 'width' => 35],
+        ];
+
+        $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            .'<cols>';
+        $colIdx = 1;
+        foreach ($headers as $colDef) {
+            $sheetXml .= '<col min="'.$colIdx.'" max="'.$colIdx.'" width="'.$colDef['width'].'" customWidth="1"/>';
+            $colIdx++;
+        }
+        $sheetXml .= '</cols>'
+            .'<sheetData>'
+            .'<row r="1" ht="28" customHeight="1">';
+
+        foreach ($headers as $colKey => $colDef) {
+            $sheetXml .= '<c r="'.$colKey.'1" t="inlineStr" s="1"><is><t>'.$this->escapeXmlString($colDef['title']).'</t></is></c>';
+        }
+        $sheetXml .= '</row>';
+
+        $rowNum = 2;
+        $counter = 1;
+        foreach ($reviews as $rev) {
+            $kodeDealer = $rev->dealer?->kode_dealer ?? '';
+            $namaDealer = $rev->dealer?->nama_dealer ?? '';
+            $namaReviewer = $rev->nama_reviewer ?? '';
+            $tglReview = $rev->tanggal_publish_review ? Carbon::parse($rev->tanggal_publish_review)->format('Y-m-d') : '';
+            $starRate = $rev->star_rate !== null ? number_format((float) $rev->star_rate, 1) : '';
+            $reviewText = $rev->review ?? '';
+            $responStatus = $rev->respon_from_owner ? 'Sudah Direspon' : 'Belum Direspon';
+            $tglRespon = $rev->tanggal_respon ? Carbon::parse($rev->tanggal_respon)->format('Y-m-d') : '';
+            $responText = $rev->respon ?? '';
+            $url = $rev->google_review_url ?? '';
+
+            $sheetXml .= '<row r="'.$rowNum.'">'
+                .'<c r="A'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$counter.'</t></is></c>'
+                .'<c r="B'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($kodeDealer).'</t></is></c>'
+                .'<c r="C'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($namaDealer).'</t></is></c>'
+                .'<c r="D'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($namaReviewer).'</t></is></c>'
+                .'<c r="E'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($tglReview).'</t></is></c>'
+                .'<c r="F'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($starRate).'</t></is></c>'
+                .'<c r="G'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($reviewText).'</t></is></c>'
+                .'<c r="H'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($responStatus).'</t></is></c>'
+                .'<c r="I'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($tglRespon).'</t></is></c>'
+                .'<c r="J'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($responText).'</t></is></c>'
+                .'<c r="K'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($url).'</t></is></c>'
+                .'</row>';
+
+            $rowNum++;
+            $counter++;
+        }
+
+        $sheetXml .= '</sheetData></worksheet>';
+        $zip->addFromString('xl/worksheets/sheet1.xml', $sheetXml);
+
+        $zip->close();
+        $content = (string) file_get_contents($tmp);
+        unlink($tmp);
+
+        return $content;
+    }
+
+    private function escapeXmlString(string $value): string
+    {
+        return htmlspecialchars($value, ENT_XML1 | ENT_COMPAT, 'UTF-8');
+    }
 }

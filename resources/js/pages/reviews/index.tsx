@@ -61,6 +61,8 @@ interface ReviewsIndexProps {
         dealer_id?: string;
         star_rate?: string;
         respon_from_owner?: string;
+        start_date?: string;
+        end_date?: string;
     };
     canManageAll?: boolean;
 }
@@ -84,6 +86,8 @@ export default function ReviewsIndex({
     const [responFilter, setResponFilter] = useState(
         filters.respon_from_owner || '',
     );
+    const [startDate, setStartDate] = useState(filters.start_date || '');
+    const [endDate, setEndDate] = useState(filters.end_date || '');
 
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
@@ -241,6 +245,8 @@ export default function ReviewsIndex({
         dealer_id?: string;
         star_rate?: string;
         respon_from_owner?: string;
+        start_date?: string;
+        end_date?: string;
     }) => {
         router.get(
             reviewsRoute.index.url(),
@@ -249,6 +255,8 @@ export default function ReviewsIndex({
                 dealer_id: newFilters.dealer_id || undefined,
                 star_rate: newFilters.star_rate || undefined,
                 respon_from_owner: newFilters.respon_from_owner || undefined,
+                start_date: newFilters.start_date || undefined,
+                end_date: newFilters.end_date || undefined,
             },
             { preserveState: true, replace: true },
         );
@@ -261,39 +269,72 @@ export default function ReviewsIndex({
             dealer_id: dealerFilter,
             star_rate: starFilter,
             respon_from_owner: responFilter,
+            start_date: startDate,
+            end_date: endDate,
         });
     };
 
-    const handleDealerChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const val = e.target.value;
-        setDealerFilter(val);
-        applyFilters({
-            search,
-            dealer_id: val,
-            star_rate: starFilter,
-            respon_from_owner: responFilter,
-        });
-    };
-
-    const handleStarChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const val = e.target.value;
-        setStarFilter(val);
-        applyFilters({
-            search,
-            dealer_id: dealerFilter,
-            star_rate: val,
-            respon_from_owner: responFilter,
-        });
-    };
-
-    const handleResponChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const val = e.target.value;
-        setResponFilter(val);
+    const handleStartDateChange = (val: string) => {
+        setStartDate(val);
         applyFilters({
             search,
             dealer_id: dealerFilter,
             star_rate: starFilter,
-            respon_from_owner: val,
+            respon_from_owner: responFilter,
+            start_date: val,
+            end_date: endDate,
+        });
+    };
+
+    const handleEndDateChange = (val: string) => {
+        setEndDate(val);
+        applyFilters({
+            search,
+            dealer_id: dealerFilter,
+            star_rate: starFilter,
+            respon_from_owner: responFilter,
+            start_date: startDate,
+            end_date: val,
+        });
+    };
+
+    const handlePresetDate = (
+        preset: 'all' | 'today' | '7days' | '30days' | 'thisMonth',
+    ) => {
+        const today = new Date();
+        const formatDateIso = (d: Date) => d.toISOString().split('T')[0];
+
+        let newStart = '';
+        let newEnd = '';
+
+        if (preset === 'today') {
+            newStart = formatDateIso(today);
+            newEnd = formatDateIso(today);
+        } else if (preset === '7days') {
+            const past = new Date(today);
+            past.setDate(past.getDate() - 7);
+            newStart = formatDateIso(past);
+            newEnd = formatDateIso(today);
+        } else if (preset === '30days') {
+            const past = new Date(today);
+            past.setDate(past.getDate() - 30);
+            newStart = formatDateIso(past);
+            newEnd = formatDateIso(today);
+        } else if (preset === 'thisMonth') {
+            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            newStart = formatDateIso(firstDay);
+            newEnd = formatDateIso(today);
+        }
+
+        setStartDate(newStart);
+        setEndDate(newEnd);
+        applyFilters({
+            search,
+            dealer_id: dealerFilter,
+            star_rate: starFilter,
+            respon_from_owner: responFilter,
+            start_date: newStart,
+            end_date: newEnd,
         });
     };
 
@@ -302,11 +343,26 @@ export default function ReviewsIndex({
         setDealerFilter('');
         setStarFilter('');
         setResponFilter('');
+        setStartDate('');
+        setEndDate('');
         router.get(
             reviewsRoute.index.url(),
             {},
             { preserveState: true, replace: true },
         );
+    };
+
+    const handleExport = () => {
+        const queryParams: Record<string, string> = {};
+        if (search) queryParams.search = search;
+        if (dealerFilter) queryParams.dealer_id = dealerFilter;
+        if (starFilter) queryParams.star_rate = starFilter;
+        if (responFilter) queryParams.respon_from_owner = responFilter;
+        if (startDate) queryParams.start_date = startDate;
+        if (endDate) queryParams.end_date = endDate;
+
+        const url = reviewsRoute.export.url({ query: queryParams });
+        window.location.href = url;
     };
 
     const handleOpenCreate = () => {
@@ -666,7 +722,7 @@ export default function ReviewsIndex({
     };
 
     const hasActiveFilters = Boolean(
-        search || dealerFilter || starFilter || responFilter,
+        search || dealerFilter || starFilter || responFilter || startDate || endDate,
     );
 
     const respondedPct =
@@ -701,6 +757,13 @@ export default function ReviewsIndex({
                                 </AntButton>
                             </Link>
                         )}
+                        <AntButton
+                            icon={<Download className="size-4" />}
+                            onClick={handleExport}
+                            className="shrink-0"
+                        >
+                            Export XLSX
+                        </AntButton>
                         {canManageAll && (
                             <>
                                 <AntButton
@@ -823,6 +886,8 @@ export default function ReviewsIndex({
                                         dealer_id: dealerFilter,
                                         star_rate: starFilter,
                                         respon_from_owner: responFilter,
+                                        start_date: startDate,
+                                        end_date: endDate,
                                     });
                                 }}
                                 allowClear
@@ -846,6 +911,8 @@ export default function ReviewsIndex({
                                             dealer_id: nextVal,
                                             star_rate: starFilter,
                                             respon_from_owner: responFilter,
+                                            start_date: startDate,
+                                            end_date: endDate,
                                         });
                                     }}
                                     allowClear
@@ -874,6 +941,8 @@ export default function ReviewsIndex({
                                         dealer_id: dealerFilter,
                                         star_rate: nextVal,
                                         respon_from_owner: responFilter,
+                                        start_date: startDate,
+                                        end_date: endDate,
                                     });
                                 }}
                                 allowClear
@@ -902,6 +971,8 @@ export default function ReviewsIndex({
                                         dealer_id: dealerFilter,
                                         star_rate: starFilter,
                                         respon_from_owner: nextVal,
+                                        start_date: startDate,
+                                        end_date: endDate,
                                     });
                                 }}
                                 allowClear
@@ -918,14 +989,96 @@ export default function ReviewsIndex({
                         </div>
                     </div>
 
+                    {/* Date Filter & Presets */}
+                    <div className="mt-3 flex flex-col gap-2.5 border-t border-sidebar-border/50 pt-3 md:flex-row md:items-center md:justify-between dark:border-sidebar-border">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                                <Calendar className="size-3.5 text-primary" />
+                                Periode Tanggal:
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                                <input
+                                    type="date"
+                                    aria-label="Tanggal Mulai"
+                                    value={startDate}
+                                    onChange={(e) => handleStartDateChange(e.target.value)}
+                                    className="h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:border-sidebar-border"
+                                />
+                                <span className="text-xs text-muted-foreground">s/d</span>
+                                <input
+                                    type="date"
+                                    aria-label="Tanggal Selesai"
+                                    value={endDate}
+                                    onChange={(e) => handleEndDateChange(e.target.value)}
+                                    className="h-8 rounded-md border border-input bg-background px-2.5 py-1 text-xs shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:border-sidebar-border"
+                                />
+                                {(startDate || endDate) && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handlePresetDate('all')}
+                                        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                        title="Hapus filter tanggal"
+                                    >
+                                        <X className="size-3.5" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-muted-foreground">Pilihan cepat:</span>
+                            <button
+                                type="button"
+                                onClick={() => handlePresetDate('today')}
+                                className={`rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                                    startDate === todayString && endDate === todayString
+                                        ? 'bg-primary text-primary-foreground shadow-2xs'
+                                        : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
+                                }`}
+                            >
+                                Hari Ini
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handlePresetDate('7days')}
+                                className="rounded-md bg-muted/60 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                                7 Hari
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handlePresetDate('30days')}
+                                className="rounded-md bg-muted/60 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                                30 Hari
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handlePresetDate('thisMonth')}
+                                className="rounded-md bg-muted/60 px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                                Bulan Ini
+                            </button>
+                        </div>
+                    </div>
+
                     {hasActiveFilters && (
                         <div className="mt-3 flex items-center justify-between border-t border-sidebar-border/50 pt-3 text-xs text-muted-foreground dark:border-sidebar-border">
-                            <span>Filter aktif diterapkan</span>
+                            <span className="flex items-center gap-1.5">
+                                <span className="size-1.5 rounded-full bg-emerald-500"></span>
+                                Filter aktif diterapkan
+                                {(startDate || endDate) && (
+                                    <span className="text-muted-foreground/80">
+                                        (Tanggal: {startDate || 'Awal'} s/d {endDate || 'Sekarang'})
+                                    </span>
+                                )}
+                            </span>
                             <AntButton
                                 type="link"
                                 size="small"
                                 onClick={handleResetFilters}
-                                className="p-0 font-medium"
+                                className="p-0 font-medium text-rose-500 hover:text-rose-600"
                             >
                                 Reset Semua Filter
                             </AntButton>

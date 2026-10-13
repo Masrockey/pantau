@@ -163,3 +163,61 @@ test('reviews can be filtered by dealer, star_rate, and search keyword', functio
     $starResponse = $this->actingAs($user)->get(route('reviews.index', ['star_rate' => '5']));
     $starResponse->assertOk();
 });
+
+test('reviews can be filtered by date range', function (): void {
+    $user = User::factory()->create();
+    $dealer = Dealer::factory()->create();
+
+    $reviewOld = Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'tanggal_publish_review' => '2026-08-01',
+        'nama_reviewer' => 'Old Reviewer',
+    ]);
+    $reviewTarget = Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'tanggal_publish_review' => '2026-09-15',
+        'nama_reviewer' => 'Target Reviewer',
+    ]);
+    $reviewFuture = Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'tanggal_publish_review' => '2026-10-20',
+        'nama_reviewer' => 'Future Reviewer',
+    ]);
+
+    $response = $this->actingAs($user)->get(route('reviews.index', [
+        'start_date' => '2026-09-01',
+        'end_date' => '2026-09-30',
+    ]));
+
+    $response->assertOk();
+    $response->assertInertia(function ($page): void {
+        $page->component('reviews/index')
+            ->has('reviews.data', 1)
+            ->where('reviews.data.0.nama_reviewer', 'Target Reviewer')
+            ->where('filters.start_date', '2026-09-01')
+            ->where('filters.end_date', '2026-09-30');
+    });
+});
+
+test('authenticated users can export filtered reviews to xlsx', function (): void {
+    $user = User::factory()->create();
+    $dealer = Dealer::factory()->create(['kode_dealer' => 'DLR099', 'nama_dealer' => 'Dealer Sukses']);
+
+    Review::factory()->create([
+        'dealer_id' => $dealer->id,
+        'nama_reviewer' => 'Pelanggan Setia',
+        'star_rate' => 5.0,
+        'review' => 'Pelayanan sangat memuaskan!',
+        'tanggal_publish_review' => '2026-09-10',
+    ]);
+
+    $response = $this->actingAs($user)->get(route('reviews.export', [
+        'start_date' => '2026-09-01',
+        'end_date' => '2026-09-30',
+    ]));
+
+    $response->assertOk();
+    $response->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect((string) $response->headers->get('Content-Disposition'))->toContain('reviews_export_');
+    expect(strlen((string) $response->getContent()))->toBeGreaterThan(100);
+});
