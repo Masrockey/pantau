@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+*/node_modules
+vendor
+.env
+.env.*
+.phpunit.cache
+storage/logs/*.log
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+gbpscrap/dist
+gbpscrap/storage

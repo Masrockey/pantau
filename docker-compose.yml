@@ -1,0 +1,50 @@
+services:
+  laravel-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pantau-laravel-app
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8080
+      GBP_API_BASE_URL: http://gbpscrap:3000
+    env_file:
+      - .env
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+      - /var/www/html/node_modules
+    depends_on:
+      gbpscrap:
+        condition: service_healthy
+    networks:
+      - pantau-network
+
+  gbpscrap:
+    build:
+      context: .
+      dockerfile: gbpscrap/Dockerfile
+    container_name: pantau-gbpscrap
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      HOST: 0.0.0.0
+      HEADLESS: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - pantau-network
+
+networks:
+  pantau-network:
+    driver: bridge
