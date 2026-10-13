@@ -1,18 +1,28 @@
-# Stage 1: Build Frontend Assets
-FROM node:22-bookworm-slim AS frontend
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci || npm install
-COPY . .
-RUN npm run build
-
-# Stage 2: Install Composer Dependencies
+# Stage 1: Install Composer Dependencies
 FROM composer:2 AS vendor
 WORKDIR /app
 COPY composer*.json ./
 RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts
 COPY . .
 RUN composer dump-autoload --optimize
+
+# Stage 2: Build Frontend Assets (Node with PHP CLI for Wayfinder route generator)
+FROM node:22-bookworm-slim AS frontend
+WORKDIR /app
+
+# Install PHP CLI & extensions needed by Wayfinder during vite build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    php-cli \
+    php-mbstring \
+    php-xml \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY package*.json ./
+RUN npm ci || npm install
+COPY . .
+# Copy vendor from vendor stage so Wayfinder can run `php artisan wayfinder:generate`
+COPY --from=vendor /app/vendor /app/vendor
+RUN npm run build
 
 # Stage 3: PHP 8.4 Apache Production Server
 FROM php:8.4-apache
