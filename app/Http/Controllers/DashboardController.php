@@ -16,6 +16,7 @@ class DashboardController extends Controller
      */
     public function index(Request $request): Response
     {
+        @ini_set('max_execution_time', '300');
         $user = $request->user();
         $isGlobal = $user?->hasGlobalAccess() ?? false;
         $userDealerId = $user?->dealer_id;
@@ -383,11 +384,13 @@ class DashboardController extends Controller
                     if ($rev->respon_from_owner) {
                         $jumlahFeedback++;
                         if ($rev->tanggal_respon && $rev->tanggal_publish_review) {
-                            $pub = Carbon::parse($rev->tanggal_publish_review);
-                            $resp = Carbon::parse($rev->tanggal_respon);
-                            $diff = $pub->diffInDays($resp, false);
-                            $totalLtDays += max(0, $diff);
-                            $ltCount++;
+                            $tPub = strtotime(substr($rev->tanggal_publish_review, 0, 10));
+                            $tResp = strtotime(substr($rev->tanggal_respon, 0, 10));
+                            if ($tPub && $tResp) {
+                                $diff = (int) round(($tResp - $tPub) / 86400);
+                                $totalLtDays += max(0, $diff);
+                                $ltCount++;
+                            }
                         }
                     }
                 }
@@ -495,11 +498,13 @@ class DashboardController extends Controller
                     if ($rev->respon_from_owner) {
                         $feedbackDone++;
                         if ($rev->tanggal_respon && $rev->tanggal_publish_review) {
-                            $pub = Carbon::parse($rev->tanggal_publish_review);
-                            $resp = Carbon::parse($rev->tanggal_respon);
-                            $diff = $pub->diffInDays($resp, false);
-                            $totalLtDays += max(0, $diff);
-                            $ltCount++;
+                            $tPub = strtotime(substr($rev->tanggal_publish_review, 0, 10));
+                            $tResp = strtotime(substr($rev->tanggal_respon, 0, 10));
+                            if ($tPub && $tResp) {
+                                $diff = (int) round(($tResp - $tPub) / 86400);
+                                $totalLtDays += max(0, $diff);
+                                $ltCount++;
+                            }
                         }
                     }
                 }
@@ -587,7 +592,7 @@ class DashboardController extends Controller
             ->whereNotNull('review')
             ->where('review', '!=', '');
 
-        $wordCloudData = $this->extractWordCloud($wordReviewsQuery->pluck('review'), 140);
+        $wordCloudData = $this->extractWordCloud($wordReviewsQuery->latest('tanggal_publish_review')->limit(1000)->pluck('review'), 140);
         $wordCloudAllTime = $wordCloudData;
 
         // GMB Cluster Quadrant Analysis
