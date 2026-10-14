@@ -219,8 +219,14 @@ class SyncReviewServerService
 
         $this->addLog($initialMessage, 'info');
 
-        $phpBinary = PHP_BINARY;
+        $finder = new \Symfony\Component\Process\PhpExecutableFinder();
+        $phpBinary = $finder->find(false) ?: 'php';
+        if (str_contains(strtolower($phpBinary), 'apache') || str_contains(strtolower($phpBinary), 'httpd')) {
+            $phpBinary = 'php';
+        }
+
         $artisanPath = base_path('artisan');
+        $logPath = storage_path('logs/sync-server.log');
 
         $proxyFlag = $useProxy ? '--proxy' : '--no-proxy';
         $targetArg = escapeshellarg($target);
@@ -239,13 +245,14 @@ class SyncReviewServerService
             pclose(popen($cmd, 'r'));
         } else {
             $cmd = sprintf(
-                '%s %s reviews:sync-server --target=%s --limit=%d --sort=%s %s > /dev/null 2>&1 &',
+                'nohup %s %s reviews:sync-server --target=%s --limit=%d --sort=%s %s >> %s 2>&1 &',
                 escapeshellarg($phpBinary),
                 escapeshellarg($artisanPath),
                 $targetArg,
                 $limit,
                 $sortArg,
-                $proxyFlag
+                $proxyFlag,
+                escapeshellarg($logPath)
             );
             exec($cmd);
         }
