@@ -58,6 +58,7 @@ WORKDIR /var/www/html
 COPY . /var/www/html
 COPY --from=build-stage /app/vendor /var/www/html/vendor
 COPY --from=build-stage /app/public/build /var/www/html/public/build
+COPY --from=build-stage /app/public/build /var/www/html_build_backup
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

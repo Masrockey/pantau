@@ -28,6 +28,13 @@ if ! grep -q "^APP_KEY=base64:" /var/www/html/.env 2>/dev/null; then
     php artisan key:generate --force || true
 fi
 
+# Restore built frontend assets if missing due to host volume mount
+if [ ! -f /var/www/html/public/build/manifest.json ] && [ -d /var/www/html_build_backup ]; then
+    mkdir -p /var/www/html/public/build
+    cp -r /var/www/html_build_backup/* /var/www/html/public/build/
+    chown -R www-data:www-data /var/www/html/public/build || true
+fi
+
 # Create storage link if not exists
 if [ ! -L /var/www/html/public/storage ]; then
     php artisan storage:link --quiet || true
