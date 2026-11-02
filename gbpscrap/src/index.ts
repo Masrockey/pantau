@@ -81,6 +81,7 @@ async function bootstrap() {
       ],
       tags: [
         { name: 'Scraper', description: 'Synchronous scraping endpoints' },
+        { name: 'Apify Compatible', description: 'Drop-in Apify compass/crawler-google-places (nwua9Gu5YrADL7ZDj) endpoints' },
         { name: 'Jobs', description: 'Asynchronous background scraping jobs' },
         { name: 'System', description: 'Health and system diagnostics' },
       ],

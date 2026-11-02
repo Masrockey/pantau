@@ -28,36 +28,47 @@ export const SELECTORS = {
 
   // Profile details
   title: 'h1.DUwDvf, h1.fontHeadlineLarge, div.TIHn2 h1, div.lMbq3e h1, div.m6QErb h1',
+  subTitle: 'h2.bwoZTb, div.lMbq3e div.fontBodyMedium:not(.F7nice)',
   rating: 'div.F7nice span[aria-hidden="true"], span.ceNzKf, span.fontDisplayLarge',
   reviewCount: 'div.F7nice span:has-text("(") span, div.F7nice span:nth-child(2) span, button[aria-label*="ulasan" i], button[aria-label*="review" i], span[aria-label*="ulasan" i], span[aria-label*="review" i], span:has-text(" ulasan")',
   category: 'button.DkEaL, span.DkEaL',
   address: 'button[data-item-id="address"] div.fontBodyMedium, [data-item-id="address"]',
+  plusCode: 'button[data-item-id="oloc"] div.fontBodyMedium, [data-item-id="oloc"]',
   phone: 'button[data-item-id*="phone"] div.fontBodyMedium, [data-item-id*="phone"]',
   website: 'a[data-item-id="authority"], [data-item-id="authority"]',
-  openingHoursDropdown: 'div.OMl5r[role="button"], div[jsaction*="openhours.wfvdle"], [aria-label*="jam buka" i], [aria-label*="opening hours" i]',
+  openingHoursDropdown: 'div.OMl5r[role="button"], div[jsaction*="openhours.wfvdle"], [aria-label*="jam buka" i], [aria-label*="opening hours" i], [aria-label*="hours" i]',
   openingHoursTable: 'table.eK4R0e tr, tr.y0skZc, table.eKjhZj tr, div[data-item-id*="oh"] table tr, div.t39EBf table tr',
+  heroImage: 'button[jsaction*="heroHeaderImage"] img, div.ZKCDEc img, button.aoRNLd img',
+  imagesCountButton: 'button.Dx2nRe, button[aria-label*="foto" i], button[aria-label*="photo" i], div.YkuOqf',
+  reviewsDistributionRows: 'tr.BHOKXe[aria-label], table.ExlQHd tr[aria-label], tr[aria-label*="bintang" i], tr[aria-label*="star" i]',
 
   // Tabs & Reviews section
+  overviewTab: 'button[role="tab"][aria-label*="Ringkasan" i], button[role="tab"][aria-label*="Overview" i], button[role="tab"]:has-text("Ringkasan"), button[role="tab"]:has-text("Overview")',
   reviewsTab: 'button[role="tab"][aria-label*="Ulasan" i], button[role="tab"][aria-label*="Reviews" i], button[role="tab"]:has-text("Ulasan"), button[role="tab"]:has-text("Reviews")',
-  reviewsSortButton: 'button[aria-label*="Urutkan ulasan" i], button[aria-label*="Sort reviews" i], button[data-value*="Urutkan" i]',
+  aboutTab: 'button[role="tab"][aria-label*="Tentang" i], button[role="tab"][aria-label*="About" i], button[role="tab"]:has-text("Tentang"), button[role="tab"]:has-text("About")',
+  reviewsSortButton: 'button[aria-label*="Urutkan ulasan" i], button[aria-label*="Sort reviews" i], button[data-value*="Urutkan" i], button[data-value*="Sort" i], button[aria-label*="Paling relevan" i], button[aria-label*="Most relevant" i]',
   sortOptions: {
     relevant: 'div[role="menuitemradio"]:nth-child(1), div[role="menuitemradio"][data-index="0"]',
     newest: 'div[role="menuitemradio"]:nth-child(2), div[role="menuitemradio"][data-index="1"]',
     highest: 'div[role="menuitemradio"]:nth-child(3), div[role="menuitemradio"][data-index="2"]',
-    lowest: 'div[role="menuitemradio"]:nth-child(4), div[role="menuitemradio"][data-index="3"]'
+    lowest: 'div[role="menuitemradio"]:nth-child(4), div[role="menuitemradio"][data-index="3"]',
   },
+  reviewsTopicChips: 'div[role="radiogroup"] button.e2moi[aria-label*="ulasan" i], div[role="radiogroup"] button.e2moi[aria-label*="review" i], button.e2moi[aria-label*="sebutan" i], button.e2moi[aria-label*="mention" i]',
   reviewsScrollContainer: 'div[role="feed"], div.m6QErb.DxyBCb.kA9KIf.dS8AEf, div.m6QErb[aria-label*="Ulasan" i], div.m6QErb[aria-label*="Reviews" i]',
 
   // Single review item
   reviewCard: 'div.jftiEf',
   reviewerName: 'div.d4r55',
   reviewerLink: 'button.al6Kxe, a[data-href*="contrib"]',
+  reviewerPhoto: 'button.WEBjve img.NBa7we, img.NBa7we',
+  reviewerSubInfo: 'div.RfnDt',
   reviewRating: 'span.kvMYJc',
   reviewDate: 'span.rsqaWe',
-  reviewText: 'span.wiI7m, div.MyEned span, div.wiI7m span, div[lang] span',
-  reviewExpandButton: 'button.w8nwRe.kyuRq, button[aria-label*="Lihat lainnya" i], button[aria-label*="See more" i], button:has-text("Lainnya"), button:has-text("More")',
+  reviewText: 'span.wiI7pd, span.wiI7m, div.MyEned span, div.wiI7m span, div[lang] span',
+  reviewExpandButton: 'div.jftiEf button.w8nwRe.kyuRq, div.jftiEf button[aria-label*="Lihat lainnya" i], div.jftiEf button[aria-label*="See more" i]',
   reviewLikes: 'span.pkWtMe, button[aria-label*="orang merasa" i], button[aria-label*="people found" i]',
+  reviewImages: 'button.Tya61d[style*="background-image"]',
   ownerResponse: 'div.CDe7pd',
   ownerResponseText: 'div.CDe7pd div.wiI7pd, div.CDe7pd div.wiI7m, div.CDe7pd div[lang]',
-  ownerResponseDate: 'div.CDe7pd span.DZSIDd, div.CDe7pd span.DHIhFt'
+  ownerResponseDate: 'div.CDe7pd span.DZSIDd, div.CDe7pd span.DHIhFt',
 };

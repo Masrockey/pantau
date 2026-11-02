@@ -7,6 +7,7 @@ use Exception;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Symfony\Component\Process\PhpExecutableFinder;
 
 class SyncReviewServerService
 {
@@ -15,6 +16,8 @@ class SyncReviewServerService
     public const CACHE_LOGS_KEY = 'sync_reviews_server_logs';
 
     public const CACHE_CANCEL_KEY = 'sync_reviews_server_cancel_signal';
+
+    public const CACHE_STAGED_REVIEWS_KEY = 'sync_reviews_server_staged_reviews';
 
     public const CACHE_TTL_DAYS = 7;
 
@@ -110,6 +113,103 @@ class SyncReviewServerService
     {
         Cache::forget(self::CACHE_LOGS_KEY);
         $this->addLog('Log aktivitas server dibersihkan.', 'info');
+    }
+
+    /**
+     * Get the staged reviews waiting for user confirmation before inserting into database.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function getStagedReviews(): array
+    {
+        return Cache::get(self::CACHE_STAGED_REVIEWS_KEY, []);
+    }
+
+    /**
+     * Save staged reviews list to cache.
+     *
+     * @param  array<int, array<string, mixed>>  $reviews
+     */
+    public function saveStagedReviews(array $reviews): void
+    {
+        Cache::put(self::CACHE_STAGED_REVIEWS_KEY, $reviews, now()->addDays(self::CACHE_TTL_DAYS));
+    }
+
+    /**
+     * Append newly scraped reviews to the staged reviews cache.
+     * Deduplicates within the preview list by dealer_id + reviewer name + review text.
+     *
+     * @param  array<int, array<string, mixed>>  $newReviews
+     */
+    public function appendStagedReviews(array $newReviews): void
+    {
+        $existing = $this->getStagedReviews();
+        $map = [];
+
+        foreach ($existing as $rev) {
+            $key = ($rev['dealer_id'] ?? '').'|'.mb_strtolower(trim($rev['nama_reviewer'] ?? '')).'|'.trim($rev['review'] ?? '');
+            $map[$key] = $rev;
+        }
+
+        foreach ($newReviews as $rev) {
+            $key = ($rev['dealer_id'] ?? '').'|'.mb_strtolower(trim($rev['nama_reviewer'] ?? '')).'|'.trim($rev['review'] ?? '');
+            $map[$key] = $rev;
+        }
+
+        $this->saveStagedReviews(array_values($map));
+    }
+
+    /**
+     * Clear all staged review preview records from cache.
+     */
+    public function clearStagedReviews(): void
+    {
+        Cache::forget(self::CACHE_STAGED_REVIEWS_KEY);
+        $this->addLog('Daftar pratinjau hasil scraping dibersihkan.', 'info');
+    }
+
+    /**
+     * Commit staged review items to the MySQL database.
+     *
+     * @param  array<int, string>|null  $selectedIds
+     * @return array{imported: int, updated: int, total: int}
+     */
+    public function commitStagedReviews(?array $selectedIds = null): array
+    {
+        $allStaged = $this->getStagedReviews();
+
+        if (empty($allStaged)) {
+            return [
+                'imported' => 0,
+                'updated' => 0,
+                'total' => 0,
+            ];
+        }
+
+        $toCommit = [];
+        $remaining = [];
+
+        if ($selectedIds === null || empty($selectedIds)) {
+            $toCommit = $allStaged;
+            $remaining = [];
+        } else {
+            $selectedMap = array_flip($selectedIds);
+            foreach ($allStaged as $item) {
+                if (isset($selectedMap[$item['id']])) {
+                    $toCommit[] = $item;
+                } else {
+                    $remaining[] = $item;
+                }
+            }
+        }
+
+        $result = $this->scraperService->commitStagedReviews($toCommit);
+        $this->saveStagedReviews($remaining);
+
+        $msg = "Berhasil memasukkan {$result['imported']} ulasan baru dan memperbarui {$result['updated']} ulasan ke database (Total: {$result['total']} ulasan).";
+        $this->addLog($msg, 'success');
+
+        return $result;
     }
 
     /**
@@ -219,7 +319,7 @@ class SyncReviewServerService
 
         $this->addLog($initialMessage, 'info');
 
-        $finder = new \Symfony\Component\Process\PhpExecutableFinder();
+        $finder = new PhpExecutableFinder;
         $phpBinary = $finder->find(false) ?: 'php';
         if (str_contains(strtolower($phpBinary), 'apache') || str_contains(strtolower($phpBinary), 'httpd')) {
             $phpBinary = 'php';
@@ -394,11 +494,13 @@ class SyncReviewServerService
                         throw new Exception('Data hasil scraping tidak valid dari scraper service.');
                     }
 
-                    $syncResult = $this->scraperService->syncDealerReviewsFromJobResult($dealer, $result);
-                    $doneMsg = "Selesai! Berhasil mengimpor {$syncResult['imported']} ulasan baru dan memperbarui {$syncResult['updated']} ulasan.";
+                    $stagedData = $this->scraperService->prepareStagedReviewsFromJobResult($dealer, $result);
+                    $this->appendStagedReviews($stagedData['reviews']);
+
+                    $doneMsg = "Scraping selesai! {$stagedData['total']} ulasan berhasil diekstrak (+{$stagedData['new_count']} baru, {$stagedData['update_count']} update). Data siap diperiksa pada Tabel Hasil Scraping.";
 
                     $this->addLog(
-                        "[Selesai] {$dealer->nama_dealer}: +{$syncResult['imported']} baru, {$syncResult['updated']} terupdate. Rating Google: ★ ".($syncResult['dealer_rating'] ?? '-').' ('.($syncResult['dealer_total_review'] ?? '-').' ulasan)',
+                        "[Hasil Scraping] {$dealer->nama_dealer}: {$stagedData['total']} ulasan siap dipratinjau (+{$stagedData['new_count']} baru, {$stagedData['update_count']} terupdate). Rating Google: ★ ".($stagedData['dealer_profile']['star_rate'] ?? '-').' ('.($stagedData['dealer_profile']['total_review'] ?? '-').' ulasan)',
                         'success'
                     );
 
@@ -406,7 +508,15 @@ class SyncReviewServerService
                         'status' => 'completed',
                         'progressPercent' => 100,
                         'syncMessage' => $doneMsg,
-                        'syncResult' => $syncResult,
+                        'syncResult' => [
+                            'imported' => $stagedData['new_count'],
+                            'updated' => $stagedData['update_count'],
+                            'total_scraped' => $stagedData['total'],
+                            'dealer_nama' => $dealer->nama_dealer,
+                            'dealer_rating' => $stagedData['dealer_profile']['star_rate'] ?? null,
+                            'dealer_total_review' => $stagedData['dealer_profile']['total_review'] ?? null,
+                            'waiting_confirmation' => true,
+                        ],
                     ]);
 
                     return;
@@ -477,6 +587,7 @@ class SyncReviewServerService
                         'updated' => $totalUpdated,
                         'total_scraped' => $totalImported + $totalUpdated,
                         'dealer_nama' => "Semua Showroom ({$processedCount} selesai)",
+                        'waiting_confirmation' => true,
                     ],
                 ]);
 
@@ -538,9 +649,12 @@ class SyncReviewServerService
                         $completed = true;
                         $result = $statusData['result'] ?? null;
                         if (is_array($result)) {
-                            $syncResult = $this->scraperService->syncDealerReviewsFromJobResult($dealer, $result);
-                            $imp = $syncResult['imported'] ?? 0;
-                            $upd = $syncResult['updated'] ?? 0;
+                            $stagedData = $this->scraperService->prepareStagedReviewsFromJobResult($dealer, $result);
+                            $this->appendStagedReviews($stagedData['reviews']);
+
+                            $imp = $stagedData['new_count'] ?? 0;
+                            $upd = $stagedData['update_count'] ?? 0;
+                            $tot = $stagedData['total'] ?? 0;
                             $totalImported += $imp;
                             $totalUpdated += $upd;
                             $processedCount++;
@@ -550,7 +664,7 @@ class SyncReviewServerService
                             $this->updateStatus(['bulkProgress' => $bulkData]);
 
                             $this->addLog(
-                                "[Berhasil] {$dealer->nama_dealer}: +{$imp} baru, {$upd} terupdate.",
+                                "[Hasil Scraping] {$dealer->nama_dealer}: {$tot} ulasan siap ditinjau (+{$imp} baru, {$upd} update).",
                                 'success'
                             );
                         }
@@ -567,7 +681,8 @@ class SyncReviewServerService
             }
         }
 
-        $finalMsg = "Selesai seluruhnya! Berhasil memproses {$processedCount} dari {$totalDealers} showroom. Total +{$totalImported} ulasan baru, {$totalUpdated} ulasan terupdate.";
+        $totalScraped = $totalImported + $totalUpdated;
+        $finalMsg = "Selesai seluruhnya! Berhasil mengekstrak ulasan dari {$processedCount} dari {$totalDealers} showroom. Total {$totalScraped} ulasan siap ditinjau (+{$totalImported} baru, {$totalUpdated} update).";
         $this->addLog($finalMsg, 'success');
 
         $this->updateStatus([
@@ -577,8 +692,9 @@ class SyncReviewServerService
             'syncResult' => [
                 'imported' => $totalImported,
                 'updated' => $totalUpdated,
-                'total_scraped' => $totalImported + $totalUpdated,
+                'total_scraped' => $totalScraped,
                 'dealer_nama' => "Semua Showroom ({$processedCount} selesai)",
+                'waiting_confirmation' => true,
             ],
             'bulkProgress' => [
                 'current' => $totalDealers,

@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { GBPScraper, type ScrapeOptions } from '../scrapers/gbpScraper.js';
 
-export type JobType = 'profile' | 'reviews' | 'full';
+export type JobType = 'profile' | 'reviews' | 'full' | 'apify';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed';
 
 export interface ScrapingJob {
@@ -67,6 +67,12 @@ class JobManager {
         result = await GBPScraper.scrapeProfile(job.options);
       } else if (job.type === 'reviews') {
         result = await GBPScraper.scrapeReviews(job.options);
+      } else if (job.type === 'apify') {
+        const items = await GBPScraper.scrapeApifyDataset(job.options);
+        result = {
+          data: items[0] ?? null,
+          results: items,
+        };
       } else {
         result = await GBPScraper.scrapeFull(job.options);
       }
@@ -83,4 +89,3 @@ class JobManager {
 }
 
 export const jobManager = new JobManager();
-

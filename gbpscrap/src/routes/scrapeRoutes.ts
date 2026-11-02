@@ -6,6 +6,7 @@ import {
   scrapeProfileSchema,
   scrapeReviewsSchema,
   scrapeFullSchema,
+  scrapeApifyPlacesSchema,
   createJobSchema,
   getJobStatusSchema,
   getProxyStatsSchema,
@@ -14,6 +15,9 @@ import {
 interface CommonRequestBody extends ScrapeOptions {
   type?: JobType;
 }
+
+const MISSING_TARGET_ERROR =
+  'At least one of "url", "placeId", "startUrls", "placeIds", "query", or "searchStringsArray" must be specified.';
 
 export const scrapeRoutes: FastifyPluginAsync = async (fastify) => {
   // Health check
@@ -29,13 +33,18 @@ export const scrapeRoutes: FastifyPluginAsync = async (fastify) => {
             properties: {
               status: { type: 'string' },
               timestamp: { type: 'string' },
+              actorCompatible: { type: 'string' },
             },
           },
         },
       },
     },
     async () => {
-      return { status: 'ok', timestamp: new Date().toISOString() };
+      return {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        actorCompatible: 'compass/crawler-google-places (nwua9Gu5YrADL7ZDj)',
+      };
     }
   );
 
@@ -61,7 +70,7 @@ export const scrapeRoutes: FastifyPluginAsync = async (fastify) => {
       if (targets.length === 0) {
         return reply.status(400).send({
           success: false,
-          error: 'At least one of "url", "placeId", "startUrls", "placeIds", or "query" must be specified.',
+          error: MISSING_TARGET_ERROR,
         });
       }
 
@@ -94,7 +103,7 @@ export const scrapeRoutes: FastifyPluginAsync = async (fastify) => {
       if (targets.length === 0) {
         return reply.status(400).send({
           success: false,
-          error: 'At least one of "url", "placeId", "startUrls", "placeIds", or "query" must be specified.',
+          error: MISSING_TARGET_ERROR,
         });
       }
 
@@ -127,7 +136,7 @@ export const scrapeRoutes: FastifyPluginAsync = async (fastify) => {
       if (targets.length === 0) {
         return reply.status(400).send({
           success: false,
-          error: 'At least one of "url", "placeId", "startUrls", "placeIds", or "query" must be specified.',
+          error: MISSING_TARGET_ERROR,
         });
       }
 
@@ -148,6 +157,81 @@ export const scrapeRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // Sync: Apify compass/crawler-google-places (nwua9Gu5YrADL7ZDj) Dataset Endpoint
+  fastify.post<{
+    Body: CommonRequestBody;
+  }>(
+    '/api/scrape/places',
+    { schema: scrapeApifyPlacesSchema },
+    async (request, reply) => {
+      const body = request.body || {};
+      const targets = GBPScraper.resolveTargets(body);
+      if (targets.length === 0) {
+        return reply.status(400).send({
+          success: false,
+          error: MISSING_TARGET_ERROR,
+        });
+      }
+
+      try {
+        const items = await GBPScraper.scrapeApifyDataset(body);
+        return reply.send({
+          success: true,
+          actorId: 'nwua9Gu5YrADL7ZDj',
+          actorName: 'compass/crawler-google-places',
+          totalItems: items.length,
+          data: items[0] ?? null,
+          results: items,
+        });
+      } catch (err: any) {
+        request.log.error(err);
+        return reply.status(500).send({
+          success: false,
+          error: err.message || 'Error occurred while scraping Apify Google Places dataset.',
+        });
+      }
+    }
+  );
+
+  // Direct Apify Actor v2 Run-Sync-Get-Dataset-Items Drop-In Endpoints
+  const apifyRunSyncHandler = async (request: any, reply: any) => {
+    const body: CommonRequestBody = request.body || {};
+    const targets = GBPScraper.resolveTargets(body);
+    if (targets.length === 0) {
+      return reply.status(400).send({
+        error: {
+          type: 'invalid-input',
+          message: MISSING_TARGET_ERROR,
+        },
+      });
+    }
+
+    try {
+      const items = await GBPScraper.scrapeApifyDataset(body);
+      return reply.send(items);
+    } catch (err: any) {
+      request.log.error(err);
+      return reply.status(500).send({
+        error: {
+          type: 'actor-run-failed',
+          message: err.message || 'Error occurred while running crawler-google-places.',
+        },
+      });
+    }
+  };
+
+  fastify.post(
+    '/v2/acts/compass~crawler-google-places/run-sync-get-dataset-items',
+    { schema: scrapeApifyPlacesSchema },
+    apifyRunSyncHandler
+  );
+
+  fastify.post(
+    '/v2/acts/nwua9Gu5YrADL7ZDj/run-sync-get-dataset-items',
+    { schema: scrapeApifyPlacesSchema },
+    apifyRunSyncHandler
+  );
+
   // Async: Create Background Scraping Job
   fastify.post<{
     Body: CommonRequestBody;
@@ -161,7 +245,7 @@ export const scrapeRoutes: FastifyPluginAsync = async (fastify) => {
       if (targets.length === 0) {
         return reply.status(400).send({
           success: false,
-          error: 'At least one of "url", "placeId", "startUrls", "placeIds", or "query" must be specified.',
+          error: MISSING_TARGET_ERROR,
         });
       }
 

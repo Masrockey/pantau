@@ -34,6 +34,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('reviews/sync/cancel', [ReviewController::class, 'cancelSync'])->name('reviews.sync.cancel');
     Route::post('reviews/sync/reset', [ReviewController::class, 'resetSync'])->name('reviews.sync.reset');
     Route::post('reviews/sync/clear-logs', [ReviewController::class, 'clearSyncLogs'])->name('reviews.sync.clear-logs');
+    Route::get('reviews/sync/staged', [ReviewController::class, 'getStagedReviews'])->name('reviews.sync.staged');
+    Route::post('reviews/sync/commit', [ReviewController::class, 'commitStagedReviews'])->name('reviews.sync.commit');
+    Route::post('reviews/sync/clear-staged', [ReviewController::class, 'clearStagedReviews'])->name('reviews.sync.clear-staged');
     Route::get('reviews/sync/{jobId}', [ReviewController::class, 'checkSyncStatus'])->name('reviews.sync.status');
     Route::post('reviews/sync/schedules', [ScrapingScheduleController::class, 'store'])->name('reviews.sync.schedules.store');
     Route::put('reviews/sync/schedules/{schedule}', [ScrapingScheduleController::class, 'update'])->name('reviews.sync.schedules.update');

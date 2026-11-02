@@ -272,6 +272,11 @@ class DealerSyncService
         $weekdayIsMonday = false;
 
         foreach ($openingHours as $rawRow) {
+            if (is_array($rawRow)) {
+                $dayPart = $rawRow['day'] ?? '';
+                $hoursPart = $rawRow['hours'] ?? '';
+                $rawRow = ($dayPart !== '' && $hoursPart !== '') ? "{$dayPart}: {$hoursPart}" : '';
+            }
             $row = $this->cleanText((string) $rawRow);
             if ($row === null || $row === '') {
                 continue;
@@ -437,16 +442,21 @@ class DealerSyncService
                         }
                     }
 
+                    $rawRating = $data['rating'] ?? $data['totalScore'] ?? null;
+                    $rawReviewCount = $data['reviewCount'] ?? $data['reviewsCount'] ?? null;
+                    $rawLat = $data['latitude'] ?? $data['location']['lat'] ?? null;
+                    $rawLng = $data['longitude'] ?? $data['location']['lng'] ?? null;
+
                     return [
-                        'name' => $data['name'] ?? null,
-                        'rating' => isset($data['rating']) && is_numeric($data['rating']) ? (float) $data['rating'] : null,
-                        'reviewCount' => isset($data['reviewCount']) && is_numeric($data['reviewCount']) ? (int) $data['reviewCount'] : null,
+                        'name' => $data['name'] ?? $data['title'] ?? null,
+                        'rating' => $rawRating !== null && is_numeric($rawRating) ? (float) $rawRating : null,
+                        'reviewCount' => $rawReviewCount !== null && is_numeric($rawReviewCount) ? (int) $rawReviewCount : null,
                         'address' => $data['address'] ?? null,
                         'phone' => $data['phone'] ?? null,
                         'openingHours' => isset($data['openingHours']) && is_array($data['openingHours']) ? $data['openingHours'] : [],
-                        'placeUrl' => $data['placeUrl'] ?? null,
-                        'latitude' => isset($data['latitude']) && is_numeric($data['latitude']) ? (float) $data['latitude'] : null,
-                        'longitude' => isset($data['longitude']) && is_numeric($data['longitude']) ? (float) $data['longitude'] : null,
+                        'placeUrl' => $data['placeUrl'] ?? $data['url'] ?? null,
+                        'latitude' => $rawLat !== null && is_numeric($rawLat) ? (float) $rawLat : null,
+                        'longitude' => $rawLng !== null && is_numeric($rawLng) ? (float) $rawLng : null,
                     ];
                 }
             } catch (\Throwable $e) {

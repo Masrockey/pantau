@@ -10,6 +10,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class GoogleReviewScraperService
 {
@@ -178,23 +179,27 @@ class GoogleReviewScraperService
         if (is_array($profile)) {
             $updatedDealerFields = false;
 
-            if (isset($profile['rating']) && is_numeric($profile['rating'])) {
-                $dealer->star_rate = (float) $profile['rating'];
+            $profileRating = $profile['rating'] ?? $profile['totalScore'] ?? null;
+            if ($profileRating !== null && is_numeric($profileRating)) {
+                $dealer->star_rate = (float) $profileRating;
                 $updatedDealerFields = true;
             }
 
-            if (isset($profile['reviewCount']) && is_numeric($profile['reviewCount'])) {
-                $dealer->total_review = (int) $profile['reviewCount'];
+            $profileReviewCount = $profile['reviewCount'] ?? $profile['reviewsCount'] ?? null;
+            if ($profileReviewCount !== null && is_numeric($profileReviewCount)) {
+                $dealer->total_review = (int) $profileReviewCount;
                 $updatedDealerFields = true;
             }
 
-            if ($dealer->latitude === null && isset($profile['latitude']) && is_numeric($profile['latitude'])) {
-                $dealer->latitude = (float) $profile['latitude'];
+            $profileLat = $profile['latitude'] ?? $profile['location']['lat'] ?? null;
+            if ($dealer->latitude === null && $profileLat !== null && is_numeric($profileLat)) {
+                $dealer->latitude = (float) $profileLat;
                 $updatedDealerFields = true;
             }
 
-            if ($dealer->longitude === null && isset($profile['longitude']) && is_numeric($profile['longitude'])) {
-                $dealer->longitude = (float) $profile['longitude'];
+            $profileLng = $profile['longitude'] ?? $profile['location']['lng'] ?? null;
+            if ($dealer->longitude === null && $profileLng !== null && is_numeric($profileLng)) {
+                $dealer->longitude = (float) $profileLng;
                 $updatedDealerFields = true;
             }
 
@@ -222,9 +227,9 @@ class GoogleReviewScraperService
         $updatedCount = 0;
 
         foreach ($reviewsList as $rev) {
-            $rawAuthor = $rev['author'] ?? null;
+            $rawAuthor = $rev['author'] ?? $rev['name'] ?? null;
             $author = ! empty($rawAuthor) ? trim((string) $rawAuthor) : 'Pengguna Google';
-            $starRate = isset($rev['rating']) ? (float) $rev['rating'] : 5.0;
+            $starRate = isset($rev['rating']) ? (float) $rev['rating'] : (isset($rev['stars']) ? (float) $rev['stars'] : 5.0);
             $reviewText = ! empty($rev['text']) ? trim((string) $rev['text']) : null;
 
             // Parse publish date
@@ -232,20 +237,27 @@ class GoogleReviewScraperService
             if (! empty($rev['publishedAtDate'])) {
                 $publishedDate = $this->parseRelativeOrIsoDate((string) $rev['publishedAtDate']);
             }
-            if (! $publishedDate && ! empty($rev['relativeTime'])) {
-                $publishedDate = $this->parseRelativeOrIsoDate((string) $rev['relativeTime']);
+            $rawRelativeTime = $rev['relativeTime'] ?? $rev['publishAt'] ?? null;
+            if (! $publishedDate && ! empty($rawRelativeTime)) {
+                $publishedDate = $this->parseRelativeOrIsoDate((string) $rawRelativeTime);
             }
             if (! $publishedDate) {
                 $publishedDate = now()->format('Y-m-d');
             }
 
-            // Owner response
+            // Owner response (supports both nested ownerResponse and Apify flat responseFromOwnerText/Date)
             $ownerResp = $rev['ownerResponse'] ?? null;
-            $hasOwnerResponse = is_array($ownerResp) && ! empty($ownerResp['text']);
-            $ownerText = $hasOwnerResponse ? trim((string) $ownerResp['text']) : null;
+            $flatOwnerText = $rev['responseFromOwnerText'] ?? null;
+            $flatOwnerDate = $rev['responseFromOwnerDate'] ?? null;
+            $hasOwnerResponse = (is_array($ownerResp) && ! empty($ownerResp['text'])) || ! empty($flatOwnerText);
+            $ownerText = is_array($ownerResp) && ! empty($ownerResp['text'])
+                ? trim((string) $ownerResp['text'])
+                : (! empty($flatOwnerText) ? trim((string) $flatOwnerText) : null);
             $ownerDate = null;
             if ($hasOwnerResponse) {
-                $rawOwnerDate = ! empty($ownerResp['date']) ? (string) $ownerResp['date'] : null;
+                $rawOwnerDate = is_array($ownerResp) && ! empty($ownerResp['date'])
+                    ? (string) $ownerResp['date']
+                    : (! empty($flatOwnerDate) ? (string) $flatOwnerDate : null);
                 $ownerDate = $this->parseRelativeOrIsoDate($rawOwnerDate, $publishedDate);
             }
 
@@ -256,8 +268,8 @@ class GoogleReviewScraperService
                 $reviewUrl = $this->buildGoogleReviewUrl($reviewId, $dealer, is_array($profile) ? $profile : null);
             }
 
-            $authorUrl = $rev['authorProfileUrl'] ?? null;
-            $placeUrl = $profile['placeUrl'] ?? null;
+            $authorUrl = $rev['authorProfileUrl'] ?? $rev['reviewerUrl'] ?? null;
+            $placeUrl = $profile['placeUrl'] ?? $profile['url'] ?? null;
             $googleReviewUrl = $reviewUrl ?: ($authorUrl ?: ($placeUrl ?: $dealer->link_google_maps));
 
             // Find existing review for deduplication
@@ -326,6 +338,290 @@ class GoogleReviewScraperService
             'dealer_nama' => $dealer->nama_dealer,
             'dealer_rating' => $dealer->fresh()->star_rate,
             'dealer_total_review' => $dealer->fresh()->total_review,
+        ];
+    }
+
+    /**
+     * Parse and prepare staged reviews from scraping job result without saving to database.
+     *
+     * @param  array<string, mixed>  $jobResult
+     * @return array{
+     *     dealer_id: int,
+     *     kode_dealer: string,
+     *     nama_dealer: string,
+     *     dealer_profile: ?array<string, mixed>,
+     *     reviews: array<int, array<string, mixed>>,
+     *     total: int,
+     *     new_count: int,
+     *     update_count: int
+     * }
+     */
+    public function prepareStagedReviewsFromJobResult(Dealer $dealer, array $jobResult): array
+    {
+        // Extract data wrapper
+        $data = $jobResult['data'] ?? $jobResult['results'][0] ?? $jobResult;
+        $profile = $data['profile'] ?? null;
+        $reviewsList = $data['reviews'] ?? [];
+
+        $dealerProfile = null;
+        if (is_array($profile)) {
+            $dealerProfile = [
+                'star_rate' => isset($profile['rating']) ? (float) $profile['rating'] : (isset($profile['totalScore']) ? (float) $profile['totalScore'] : null),
+                'total_review' => isset($profile['reviewCount']) ? (int) $profile['reviewCount'] : (isset($profile['reviewsCount']) ? (int) $profile['reviewsCount'] : null),
+                'latitude' => $profile['latitude'] ?? $profile['location']['lat'] ?? null,
+                'longitude' => $profile['longitude'] ?? $profile['location']['lng'] ?? null,
+                'address' => ! empty($profile['address']) ? trim(preg_replace('/^[\p{Co}\p{So}\s]+/u', '', (string) $profile['address'])) : null,
+                'phone' => ! empty($profile['phone']) ? trim(preg_replace('/^[\p{Co}\p{So}\s]+/u', '', (string) $profile['phone'])) : null,
+                'place_url' => $profile['placeUrl'] ?? $profile['url'] ?? null,
+            ];
+        }
+
+        $stagedReviews = [];
+        $newCount = 0;
+        $updateCount = 0;
+
+        foreach ($reviewsList as $rev) {
+            $rawAuthor = $rev['author'] ?? $rev['name'] ?? null;
+            $author = ! empty($rawAuthor) ? trim((string) $rawAuthor) : 'Pengguna Google';
+            $starRate = isset($rev['rating']) ? (float) $rev['rating'] : (isset($rev['stars']) ? (float) $rev['stars'] : 5.0);
+            $reviewText = ! empty($rev['text']) ? trim((string) $rev['text']) : null;
+
+            // Parse publish date
+            $publishedDate = null;
+            if (! empty($rev['publishedAtDate'])) {
+                $publishedDate = $this->parseRelativeOrIsoDate((string) $rev['publishedAtDate']);
+            }
+            $rawRelativeTime = $rev['relativeTime'] ?? $rev['publishAt'] ?? null;
+            if (! $publishedDate && ! empty($rawRelativeTime)) {
+                $publishedDate = $this->parseRelativeOrIsoDate((string) $rawRelativeTime);
+            }
+            if (! $publishedDate) {
+                $publishedDate = now()->format('Y-m-d');
+            }
+
+            // Owner response
+            $ownerResp = $rev['ownerResponse'] ?? null;
+            $flatOwnerText = $rev['responseFromOwnerText'] ?? null;
+            $flatOwnerDate = $rev['responseFromOwnerDate'] ?? null;
+            $hasOwnerResponse = (is_array($ownerResp) && ! empty($ownerResp['text'])) || ! empty($flatOwnerText);
+            $ownerText = is_array($ownerResp) && ! empty($ownerResp['text'])
+                ? trim((string) $ownerResp['text'])
+                : (! empty($flatOwnerText) ? trim((string) $flatOwnerText) : null);
+            $ownerDate = null;
+            if ($hasOwnerResponse) {
+                $rawOwnerDate = is_array($ownerResp) && ! empty($ownerResp['date'])
+                    ? (string) $ownerResp['date']
+                    : (! empty($flatOwnerDate) ? (string) $flatOwnerDate : null);
+                $ownerDate = $this->parseRelativeOrIsoDate($rawOwnerDate, $publishedDate);
+            }
+
+            // Review URL
+            $reviewId = $rev['reviewId'] ?? null;
+            $reviewUrl = $rev['reviewUrl'] ?? null;
+            if (! $reviewUrl && $reviewId) {
+                $reviewUrl = $this->buildGoogleReviewUrl($reviewId, $dealer, is_array($profile) ? $profile : null);
+            }
+
+            $authorUrl = $rev['authorProfileUrl'] ?? $rev['reviewerUrl'] ?? null;
+            $placeUrl = $profile['placeUrl'] ?? $profile['url'] ?? null;
+            $googleReviewUrl = $reviewUrl ?: ($authorUrl ?: ($placeUrl ?: $dealer->link_google_maps));
+
+            // Find existing review for deduplication
+            $isAnonymous = in_array(
+                mb_strtolower(trim($author)),
+                ['pengguna google', 'google user', 'a google user', 'anonymous', 'google customer', 'pelanggan google'],
+                true
+            );
+
+            $existing = null;
+            if (! $isAnonymous) {
+                $existing = Review::where('dealer_id', $dealer->id)
+                    ->where('nama_reviewer', $author)
+                    ->first();
+            }
+
+            if (! $existing && $reviewText !== null && $reviewText !== '') {
+                $existing = Review::where('dealer_id', $dealer->id)
+                    ->where('review', $reviewText)
+                    ->first();
+            }
+
+            if (! $existing && $publishedDate !== null && $reviewText !== null && $reviewText !== '') {
+                $existing = Review::where('dealer_id', $dealer->id)
+                    ->where('tanggal_publish_review', $publishedDate)
+                    ->where('review', $reviewText)
+                    ->first();
+            }
+
+            $statusAction = $existing ? 'update' : 'new';
+            if ($statusAction === 'new') {
+                $newCount++;
+            } else {
+                $updateCount++;
+            }
+
+            $stagedReviews[] = [
+                'id' => (string) Str::uuid(),
+                'dealer_id' => $dealer->id,
+                'kode_dealer' => $dealer->kode_dealer,
+                'nama_dealer' => $dealer->nama_dealer,
+                'nama_reviewer' => $author,
+                'author_profile_url' => $authorUrl,
+                'star_rate' => $starRate,
+                'tanggal_publish_review' => $publishedDate,
+                'relative_time' => $rawRelativeTime,
+                'review' => $reviewText,
+                'respon_from_owner' => $hasOwnerResponse,
+                'tanggal_respon' => $ownerDate,
+                'respon' => $ownerText,
+                'google_review_url' => $googleReviewUrl,
+                'status_action' => $statusAction,
+                'existing_id' => $existing?->id,
+                'scraped_at' => now()->toIso8601String(),
+                'dealer_profile' => $dealerProfile,
+            ];
+        }
+
+        return [
+            'dealer_id' => $dealer->id,
+            'kode_dealer' => $dealer->kode_dealer,
+            'nama_dealer' => $dealer->nama_dealer,
+            'dealer_profile' => $dealerProfile,
+            'reviews' => $stagedReviews,
+            'total' => count($stagedReviews),
+            'new_count' => $newCount,
+            'update_count' => $updateCount,
+        ];
+    }
+
+    /**
+     * Commit a list of staged review items directly into the database.
+     *
+     * @param  array<int, array<string, mixed>>  $stagedReviews
+     * @return array{imported: int, updated: int, total: int}
+     */
+    public function commitStagedReviews(array $stagedReviews): array
+    {
+        $importedCount = 0;
+        $updatedCount = 0;
+
+        // Group by dealer_id to update dealer metadata once per dealer
+        $dealersUpdated = [];
+
+        foreach ($stagedReviews as $item) {
+            $dealerId = (int) ($item['dealer_id'] ?? 0);
+            if (! $dealerId) {
+                continue;
+            }
+
+            // Update dealer profile if available
+            if (! isset($dealersUpdated[$dealerId]) && ! empty($item['dealer_profile']) && is_array($item['dealer_profile'])) {
+                $dealer = Dealer::find($dealerId);
+                if ($dealer) {
+                    $prof = $item['dealer_profile'];
+                    $changed = false;
+                    if (isset($prof['star_rate']) && is_numeric($prof['star_rate'])) {
+                        $dealer->star_rate = (float) $prof['star_rate'];
+                        $changed = true;
+                    }
+                    if (isset($prof['total_review']) && is_numeric($prof['total_review'])) {
+                        $dealer->total_review = (int) $prof['total_review'];
+                        $changed = true;
+                    }
+                    if ($dealer->latitude === null && isset($prof['latitude']) && is_numeric($prof['latitude'])) {
+                        $dealer->latitude = (float) $prof['latitude'];
+                        $changed = true;
+                    }
+                    if ($dealer->longitude === null && isset($prof['longitude']) && is_numeric($prof['longitude'])) {
+                        $dealer->longitude = (float) $prof['longitude'];
+                        $changed = true;
+                    }
+                    if (empty($dealer->alamat) && ! empty($prof['address'])) {
+                        $dealer->alamat = trim((string) $prof['address']);
+                        $changed = true;
+                    }
+                    if (empty($dealer->no_telp_showroom) && ! empty($prof['phone'])) {
+                        $dealer->no_telp_showroom = trim((string) $prof['phone']);
+                        $changed = true;
+                    }
+                    if ($changed) {
+                        $dealer->save();
+                    }
+                    $dealersUpdated[$dealerId] = true;
+                }
+            }
+
+            $author = ! empty($item['nama_reviewer']) ? trim((string) $item['nama_reviewer']) : 'Pengguna Google';
+            $starRate = isset($item['star_rate']) ? (float) $item['star_rate'] : 5.0;
+            $reviewText = ! empty($item['review']) ? trim((string) $item['review']) : null;
+            $publishedDate = ! empty($item['tanggal_publish_review']) ? (string) $item['tanggal_publish_review'] : now()->format('Y-m-d');
+            $hasOwnerResponse = (bool) ($item['respon_from_owner'] ?? false);
+            $ownerDate = ! empty($item['tanggal_respon']) ? (string) $item['tanggal_respon'] : null;
+            $ownerText = $hasOwnerResponse && ! empty($item['respon']) ? trim((string) $item['respon']) : null;
+            $googleReviewUrl = ! empty($item['google_review_url']) ? (string) $item['google_review_url'] : null;
+
+            // Check if existing record
+            $existing = null;
+            if (! empty($item['existing_id'])) {
+                $existing = Review::find($item['existing_id']);
+            }
+
+            $isAnonymous = in_array(
+                mb_strtolower(trim($author)),
+                ['pengguna google', 'google user', 'a google user', 'anonymous', 'google customer', 'pelanggan google'],
+                true
+            );
+
+            if (! $existing && ! $isAnonymous) {
+                $existing = Review::where('dealer_id', $dealerId)
+                    ->where('nama_reviewer', $author)
+                    ->first();
+            }
+
+            if (! $existing && $reviewText !== null && $reviewText !== '') {
+                $existing = Review::where('dealer_id', $dealerId)
+                    ->where('review', $reviewText)
+                    ->first();
+            }
+
+            if (! $existing && $publishedDate !== null && $reviewText !== null && $reviewText !== '') {
+                $existing = Review::where('dealer_id', $dealerId)
+                    ->where('tanggal_publish_review', $publishedDate)
+                    ->where('review', $reviewText)
+                    ->first();
+            }
+
+            if ($existing) {
+                $existing->update([
+                    'star_rate' => $starRate,
+                    'review' => $reviewText ?? $existing->review,
+                    'tanggal_publish_review' => $publishedDate ?: $existing->tanggal_publish_review,
+                    'respon_from_owner' => $hasOwnerResponse,
+                    'tanggal_respon' => $ownerDate ?? ($hasOwnerResponse ? ($existing->tanggal_respon ?: $publishedDate) : null),
+                    'respon' => $ownerText ?? ($hasOwnerResponse ? $existing->respon : null),
+                    'google_review_url' => $googleReviewUrl ?: $existing->google_review_url,
+                ]);
+                $updatedCount++;
+            } else {
+                Review::create([
+                    'dealer_id' => $dealerId,
+                    'nama_reviewer' => $author,
+                    'tanggal_publish_review' => $publishedDate,
+                    'star_rate' => $starRate,
+                    'review' => $reviewText,
+                    'respon_from_owner' => $hasOwnerResponse,
+                    'tanggal_respon' => $ownerDate,
+                    'respon' => $ownerText,
+                    'google_review_url' => $googleReviewUrl,
+                ]);
+                $importedCount++;
+            }
+        }
+
+        return [
+            'imported' => $importedCount,
+            'updated' => $updatedCount,
+            'total' => count($stagedReviews),
         ];
     }
 

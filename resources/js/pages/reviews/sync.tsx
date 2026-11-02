@@ -17,6 +17,13 @@ import {
     RefreshCw,
     RotateCcw,
     Search,
+    CheckSquare,
+    ChevronLeft,
+    ChevronRight,
+    Database,
+    Eye,
+    Filter,
+    MessageSquare,
     Shield,
     ShieldCheck,
     Square,
@@ -56,6 +63,26 @@ import dealersRoute from '@/routes/dealers';
 import reviewsRoute from '@/routes/reviews';
 import syncRoute from '@/routes/reviews/sync';
 import schedulesRoute from '@/routes/reviews/sync/schedules';
+
+export interface StagedReviewItem {
+    id: string;
+    dealer_id: number;
+    kode_dealer?: string;
+    nama_dealer?: string;
+    nama_reviewer: string;
+    author_profile_url?: string | null;
+    star_rate: number;
+    tanggal_publish_review: string;
+    relative_time?: string | null;
+    review?: string | null;
+    respon_from_owner: boolean;
+    tanggal_respon?: string | null;
+    respon?: string | null;
+    google_review_url?: string | null;
+    status_action: 'new' | 'update';
+    existing_id?: number | null;
+    scraped_at?: string;
+}
 
 export interface ScrapingScheduleItem {
     id: number;
@@ -125,6 +152,7 @@ interface SyncPageProps {
     schedules?: ScrapingScheduleItem[];
     serverStatus?: SyncServerStatus;
     serverLogs?: LogEntry[];
+    stagedReviews?: StagedReviewItem[];
     canManageAll?: boolean;
 }
 
@@ -144,6 +172,7 @@ export default function SyncReviewsPage({
     schedules = [],
     serverStatus,
     serverLogs = [],
+    stagedReviews = [],
     canManageAll = true,
 }: SyncPageProps) {
     // Health and proxy state
@@ -417,9 +446,211 @@ export default function SyncReviewsPage({
     const logContainerRef = useRef<HTMLDivElement>(null);
     const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Quick table search & filter
+    // Staged reviews state (preview before inserting to database)
+    const [stagedList, setStagedList] = useState<StagedReviewItem[]>(stagedReviews || []);
+    const [selectedStagedIds, setSelectedStagedIds] = useState<string[]>([]);
+    const [isCommitting, setIsCommitting] = useState(false);
+    const [isClearingStaged, setIsClearingStaged] = useState(false);
+    const [isConfirmCommitModalOpen, setIsConfirmCommitModalOpen] = useState(false);
+    const [previewReviewDetail, setPreviewReviewDetail] = useState<StagedReviewItem | null>(null);
+
+    // Staged table filters & pagination
+    const [stagedSearch, setStagedSearch] = useState('');
+    const [stagedDealerFilter, setStagedDealerFilter] = useState('all');
+    const [stagedStatusFilter, setStagedStatusFilter] = useState<'all' | 'new' | 'update'>('all');
+    const [stagedRatingFilter, setStagedRatingFilter] = useState<string>('all');
+    const [stagedResponseFilter, setStagedResponseFilter] = useState<'all' | 'yes' | 'no'>('all');
+    const [stagedPage, setStagedPage] = useState(1);
+    const [stagedPageSize, setStagedPageSize] = useState(10);
+
+    // Sync with incoming props
+    useEffect(() => {
+        if (stagedReviews) {
+            setStagedList(stagedReviews);
+        }
+    }, [stagedReviews]);
+
+    // Quick table search & filter for showroom list
     const [tableSearch, setTableSearch] = useState('');
     const [filterMapsOnly, setFilterMapsOnly] = useState<'all' | 'with_maps' | 'without_maps'>('all');
+
+    // Staged review handlers
+    const handleCommitStagedReviews = async (onlySelected = false) => {
+        const idsToCommit = onlySelected ? selectedStagedIds : null;
+        if (onlySelected && selectedStagedIds.length === 0) {
+            toast.error('Silakan pilih setidaknya satu ulasan untuk dimasukkan ke database.');
+            return;
+        }
+
+        setIsCommitting(true);
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+
+        try {
+            const res = await fetch(syncRoute.commit.url(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({
+                    selected_ids: idsToCommit,
+                }),
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                toast.error(data.message || 'Gagal memasukkan ulasan ke database.');
+                return;
+            }
+
+            toast.success(data.message || 'Ulasan berhasil dimasukkan ke database!');
+            setStagedList(data.stagedReviews || []);
+            setSelectedStagedIds([]);
+            setIsConfirmCommitModalOpen(false);
+            router.reload({ only: ['stats', 'dealers'] });
+        } catch {
+            toast.error('Gagal menghubungi server untuk memasukkan ulasan.');
+        } finally {
+            setIsCommitting(false);
+        }
+    };
+
+    const handleClearStagedReviews = async () => {
+        setIsClearingStaged(true);
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+
+        try {
+            const res = await fetch(syncRoute.clearStaged.url(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    Accept: 'application/json',
+                },
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                toast.error(data.message || 'Gagal membersihkan daftar pratinjau.');
+                return;
+            }
+
+            toast.success(data.message || 'Daftar pratinjau berhasil dibersihkan.');
+            setStagedList([]);
+            setSelectedStagedIds([]);
+        } catch {
+            toast.error('Gagal menghubungi server untuk membersihkan pratinjau.');
+        } finally {
+            setIsClearingStaged(false);
+        }
+    };
+
+    const handleFetchStagedReviews = async () => {
+        try {
+            const res = await fetch(syncRoute.staged.url(), {
+                headers: { Accept: 'application/json' },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data.stagedReviews)) {
+                    setStagedList(data.stagedReviews);
+                    toast.success('Daftar pratinjau ulasan berhasil disegarkan.');
+                }
+            }
+        } catch {
+            toast.error('Gagal memuat pratinjau ulasan dari server.');
+        }
+    };
+
+    // Derived filtering for staged reviews
+    const distinctDealersInStaging = React.useMemo(() => {
+        const map = new Map<number, { id: number; kode: string; nama: string; count: number }>();
+        stagedList.forEach((item) => {
+            const cur = map.get(item.dealer_id);
+            if (cur) {
+                cur.count++;
+            } else {
+                map.set(item.dealer_id, {
+                    id: item.dealer_id,
+                    kode: item.kode_dealer || '',
+                    nama: item.nama_dealer || `Dealer #${item.dealer_id}`,
+                    count: 1,
+                });
+            }
+        });
+        return Array.from(map.values());
+    }, [stagedList]);
+
+    const filteredStagedList = React.useMemo(() => {
+        return stagedList.filter((item) => {
+            if (stagedSearch.trim()) {
+                const q = stagedSearch.toLowerCase();
+                const nameMatch = item.nama_reviewer?.toLowerCase().includes(q);
+                const dealerMatch =
+                    item.nama_dealer?.toLowerCase().includes(q) ||
+                    item.kode_dealer?.toLowerCase().includes(q);
+                const textMatch = item.review?.toLowerCase().includes(q);
+                if (!nameMatch && !dealerMatch && !textMatch) {
+                    return false;
+                }
+            }
+
+            if (stagedDealerFilter !== 'all' && String(item.dealer_id) !== stagedDealerFilter) {
+                return false;
+            }
+
+            if (stagedStatusFilter !== 'all' && item.status_action !== stagedStatusFilter) {
+                return false;
+            }
+
+            if (stagedRatingFilter !== 'all' && Math.floor(item.star_rate) !== Number(stagedRatingFilter)) {
+                return false;
+            }
+
+            if (stagedResponseFilter === 'yes' && !item.respon_from_owner) {
+                return false;
+            }
+
+            if (stagedResponseFilter === 'no' && item.respon_from_owner) {
+                return false;
+            }
+
+            return true;
+        });
+    }, [stagedList, stagedSearch, stagedDealerFilter, stagedStatusFilter, stagedRatingFilter, stagedResponseFilter]);
+
+    useEffect(() => {
+        setStagedPage(1);
+    }, [stagedSearch, stagedDealerFilter, stagedStatusFilter, stagedRatingFilter, stagedResponseFilter, stagedPageSize]);
+
+    const totalStagedPages = Math.max(1, Math.ceil(filteredStagedList.length / stagedPageSize));
+    const paginatedStagedList = React.useMemo(() => {
+        const start = (stagedPage - 1) * stagedPageSize;
+        return filteredStagedList.slice(start, start + stagedPageSize);
+    }, [filteredStagedList, stagedPage, stagedPageSize]);
+
+    const allCurrentPageSelected =
+        paginatedStagedList.length > 0 &&
+        paginatedStagedList.every((i) => selectedStagedIds.includes(i.id));
+
+    const toggleSelectAllCurrentPage = () => {
+        if (allCurrentPageSelected) {
+            const pageIds = new Set(paginatedStagedList.map((i) => i.id));
+            setSelectedStagedIds((prev) => prev.filter((id) => !pageIds.has(id)));
+        } else {
+            const pageIds = paginatedStagedList.map((i) => i.id);
+            setSelectedStagedIds((prev) => Array.from(new Set([...prev, ...pageIds])));
+        }
+    };
+
+    const toggleSelectAllFiltered = () => {
+        if (selectedStagedIds.length === filteredStagedList.length) {
+            setSelectedStagedIds([]);
+        } else {
+            setSelectedStagedIds(filteredStagedList.map((i) => i.id));
+        }
+    };
 
     // Polling function: connects to server cache
     const startPolling = () => {
@@ -447,6 +678,9 @@ export default function SyncReviewsPage({
                 if (Array.isArray(sLogs)) {
                     setLogs(sLogs);
                 }
+                if (Array.isArray(data.stagedReviews)) {
+                    setStagedList(data.stagedReviews);
+                }
 
                 if (status.status === 'completed') {
                     if (pollRef.current) {
@@ -454,7 +688,7 @@ export default function SyncReviewsPage({
                         pollRef.current = null;
                     }
                     toast.success(status.syncMessage || 'Sinkronisasi ulasan selesai diproses di server.');
-                    router.reload({ only: ['dealers', 'stats'] });
+                    router.reload({ only: ['dealers', 'stats', 'stagedReviews'] });
                 } else if (status.status === 'failed') {
                     if (pollRef.current) {
                         clearInterval(pollRef.current);
@@ -553,6 +787,9 @@ export default function SyncReviewsPage({
                             setProgressPercent(status.progressPercent ?? 0);
                             setBulkProgress(status.bulkProgress ?? null);
                             setSyncResult(status.syncResult ?? null);
+                            if (Array.isArray(data.stagedReviews)) {
+                                setStagedList(data.stagedReviews);
+                            }
 
                             if (status.status === 'starting' || status.status === 'running') {
                                 if (!pollRef.current) {
@@ -562,7 +799,7 @@ export default function SyncReviewsPage({
                                 clearInterval(pollRef.current);
                                 pollRef.current = null;
                             }
-                            router.reload({ only: ['schedules', 'serverStatus'] });
+                            router.reload({ only: ['schedules', 'serverStatus', 'stagedReviews'] });
                         }
                     }
                 } catch {
@@ -1353,6 +1590,540 @@ export default function SyncReviewsPage({
                     </div>
                 </div>
 
+                {/* Tabel Hasil Scraping Ulasan (Pratinjau Sebelum Masuk Database) */}
+                <Card className={`border shadow-sm transition-all ${stagedList.length > 0 ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}>
+                    <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between pb-3 bg-muted/10 border-b">
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Database className="size-5 text-emerald-600 dark:text-emerald-400" />
+                                <CardTitle className="text-base font-bold">
+                                    Tabel Hasil Scraping Ulasan (Pratinjau Sebelum Masuk Database)
+                                </CardTitle>
+                                <Badge
+                                    variant={stagedList.length > 0 ? 'default' : 'secondary'}
+                                    className="font-semibold text-xs"
+                                >
+                                    {stagedList.length} Ulasan Tersedia
+                                </Badge>
+                                {stagedList.length > 0 && (
+                                    <>
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                                            +{stagedList.filter((i) => i.status_action === 'new').length} Baru
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30">
+                                            {stagedList.filter((i) => i.status_action === 'update').length} Update
+                                        </span>
+                                    </>
+                                )}
+                            </div>
+                            <CardDescription className="text-xs mt-1">
+                                Ulasan hasil scraping Google Maps ditampilkan di tabel ini untuk ditinjau terlebih dahulu.
+                                Proses insert ke database MySQL <strong>tidak otomatis</strong>. Periksa data ulasan, lalu klik tombol
+                                <span className="font-semibold text-emerald-600 dark:text-emerald-400"> &quot;Masukkan ke Database&quot;</span> untuk menyimpannya secara permanen.
+                            </CardDescription>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleFetchStagedReviews}
+                                className="h-8 gap-1.5 text-xs"
+                                title="Segarkan data pratinjau dari server"
+                            >
+                                <RefreshCw className="size-3.5" />
+                                <span>Segarkan</span>
+                            </Button>
+
+                            {stagedList.length > 0 && (
+                                <AntPopconfirm
+                                    title="Bersihkan Pratinjau Ulasan?"
+                                    description="Seluruh ulasan di tabel pratinjau ini akan dihapus dari antrean cache dan tidak dimasukkan ke database. Lanjutkan?"
+                                    okText="Ya, Bersihkan"
+                                    cancelText="Batal"
+                                    okButtonProps={{ danger: true }}
+                                    onConfirm={handleClearStagedReviews}
+                                >
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={isClearingStaged}
+                                        className="h-8 gap-1.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/20 border-rose-300 dark:border-rose-800"
+                                    >
+                                        <Trash2 className="size-3.5 text-rose-500" />
+                                        <span>Bersihkan Pratinjau</span>
+                                    </Button>
+                                </AntPopconfirm>
+                            )}
+
+                            <Button
+                                type="button"
+                                size="sm"
+                                disabled={stagedList.length === 0 || isCommitting}
+                                onClick={() => setIsConfirmCommitModalOpen(true)}
+                                className="h-8 gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                            >
+                                {isCommitting ? (
+                                    <>
+                                        <Loader2 className="size-3.5 animate-spin" />
+                                        <span>Menyimpan ke DB...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Database className="size-3.5" />
+                                        <span>
+                                            {selectedStagedIds.length > 0
+                                                ? `Masukkan ${selectedStagedIds.length} Ulasan Terpilih ke Database`
+                                                : `Masukkan Semua (${filteredStagedList.length}) ke Database`}
+                                        </span>
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </CardHeader>
+
+                    <CardContent className="p-4 space-y-4">
+                        {/* Filters & Search Toolbar (Only when there are staged reviews) */}
+                        {stagedList.length > 0 && (
+                            <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-3">
+                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-12">
+                                    {/* Search Input */}
+                                    <div className="relative md:col-span-4">
+                                        <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+                                        <Input
+                                            placeholder="Cari reviewer, isi ulasan, showroom..."
+                                            value={stagedSearch}
+                                            onChange={(e) => setStagedSearch(e.target.value)}
+                                            className="h-8 pl-8 text-xs bg-background"
+                                        />
+                                    </div>
+
+                                    {/* Dealer Showroom Filter */}
+                                    <div className="md:col-span-3">
+                                        <AntSelect
+                                            value={stagedDealerFilter}
+                                            onChange={setStagedDealerFilter}
+                                            className="w-full text-xs"
+                                            size="small"
+                                            options={[
+                                                { value: 'all', label: `Semua Showroom (${distinctDealersInStaging.length})` },
+                                                ...distinctDealersInStaging.map((d) => ({
+                                                    value: String(d.id),
+                                                    label: `${d.kode} - ${d.nama} (${d.count})`,
+                                                })),
+                                            ]}
+                                        />
+                                    </div>
+
+                                    {/* Status DB Filter */}
+                                    <div className="md:col-span-2">
+                                        <AntSelect
+                                            value={stagedStatusFilter}
+                                            onChange={setStagedStatusFilter}
+                                            className="w-full text-xs"
+                                            size="small"
+                                            options={[
+                                                { value: 'all', label: 'Semua Status DB' },
+                                                { value: 'new', label: '✨ Hanya Baru (+ Baru)' },
+                                                { value: 'update', label: '🔄 Hanya Update' },
+                                            ]}
+                                        />
+                                    </div>
+
+                                    {/* Star Rating Filter */}
+                                    <div className="md:col-span-2">
+                                        <AntSelect
+                                            value={stagedRatingFilter}
+                                            onChange={setStagedRatingFilter}
+                                            className="w-full text-xs"
+                                            size="small"
+                                            options={[
+                                                { value: 'all', label: 'Semua Rating' },
+                                                { value: '5', label: '★ 5 Bintang' },
+                                                { value: '4', label: '★ 4 Bintang' },
+                                                { value: '3', label: '★ 3 Bintang' },
+                                                { value: '2', label: '★ 2 Bintang' },
+                                                { value: '1', label: '★ 1 Bintang' },
+                                            ]}
+                                        />
+                                    </div>
+
+                                    {/* Respon Owner Filter */}
+                                    <div className="md:col-span-1">
+                                        <AntSelect
+                                            value={stagedResponseFilter}
+                                            onChange={setStagedResponseFilter}
+                                            className="w-full text-xs"
+                                            size="small"
+                                            options={[
+                                                { value: 'all', label: 'Respon' },
+                                                { value: 'yes', label: 'Ada Respon' },
+                                                { value: 'no', label: 'Belum Ada' },
+                                            ]}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Selection Summary Bar */}
+                                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border/40 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-muted-foreground">
+                                            Menampilkan <strong>{filteredStagedList.length}</strong> dari{' '}
+                                            <strong>{stagedList.length}</strong> ulasan hasil scraping.
+                                        </span>
+                                        {selectedStagedIds.length > 0 && (
+                                            <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+                                                {selectedStagedIds.length} ulasan terpilih
+                                            </Badge>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        {selectedStagedIds.length > 0 ? (
+                                            <>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => setSelectedStagedIds([])}
+                                                    className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                                                >
+                                                    Batalkan Pilihan
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="secondary"
+                                                    size="sm"
+                                                    onClick={toggleSelectAllFiltered}
+                                                    className="h-6 px-2 text-[11px]"
+                                                >
+                                                    {selectedStagedIds.length === filteredStagedList.length
+                                                        ? 'Kosongkan Pilihan'
+                                                        : `Pilih Semua Hasil Filter (${filteredStagedList.length})`}
+                                                </Button>
+                                            </>
+                                        ) : (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={toggleSelectAllFiltered}
+                                                className="h-6 px-2 text-[11px] text-primary hover:text-primary/80"
+                                            >
+                                                Pilih Semua ({filteredStagedList.length})
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Staged Reviews Table */}
+                        <div className="overflow-x-auto rounded-lg border">
+                            <table className="w-full text-left text-xs whitespace-nowrap">
+                                <thead className="border-b bg-muted/40 font-medium text-muted-foreground">
+                                    <tr>
+                                        <th className="px-3 py-2.5 w-10 text-center">
+                                            <Checkbox
+                                                checked={allCurrentPageSelected}
+                                                onCheckedChange={toggleSelectAllCurrentPage}
+                                                aria-label="Pilih semua halaman ini"
+                                            />
+                                        </th>
+                                        <th className="px-3 py-2.5">Status DB</th>
+                                        <th className="px-4 py-2.5">Target Showroom</th>
+                                        <th className="px-4 py-2.5">Reviewer</th>
+                                        <th className="px-3 py-2.5 text-center">Rating</th>
+                                        <th className="px-3 py-2.5">Tanggal Ulasan</th>
+                                        <th className="px-4 py-2.5 min-w-[250px]">Isi Ulasan Google Maps</th>
+                                        <th className="px-3 py-2.5">Respon Owner</th>
+                                        <th className="px-3 py-2.5 text-right">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/60">
+                                    {stagedList.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={9} className="py-12 text-center text-muted-foreground">
+                                                <div className="flex flex-col items-center justify-center max-w-md mx-auto">
+                                                    <div className="size-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                                                        <Database className="size-6 text-muted-foreground/60" />
+                                                    </div>
+                                                    <p className="font-semibold text-foreground text-sm">
+                                                        Belum ada ulasan di antrean pratinjau.
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground mt-1 text-center">
+                                                        Jalankan proses sinkronisasi showroom di panel konfigurasi atas untuk mengekstrak ulasan Google Maps terbaru.
+                                                        Data ulasan hasil scraping akan tampil di tabel ini untuk Anda periksa terlebih dahulu sebelum disimpan ke database.
+                                                    </p>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : paginatedStagedList.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                                                <p className="font-medium">Tidak ada ulasan yang sesuai dengan filter pencarian.</p>
+                                                <Button
+                                                    type="button"
+                                                    variant="link"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setStagedSearch('');
+                                                        setStagedDealerFilter('all');
+                                                        setStagedStatusFilter('all');
+                                                        setStagedRatingFilter('all');
+                                                        setStagedResponseFilter('all');
+                                                    }}
+                                                    className="text-xs mt-1"
+                                                >
+                                                    Reset Semua Filter
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        paginatedStagedList.map((item) => {
+                                            const isSelected = selectedStagedIds.includes(item.id);
+                                            return (
+                                                <tr
+                                                    key={item.id}
+                                                    className={`hover:bg-muted/40 transition-colors ${
+                                                        isSelected ? 'bg-primary/5' : ''
+                                                    }`}
+                                                >
+                                                    {/* Checkbox */}
+                                                    <td className="px-3 py-2.5 text-center">
+                                                        <Checkbox
+                                                            checked={isSelected}
+                                                            onCheckedChange={(checked) => {
+                                                                if (checked) {
+                                                                    setSelectedStagedIds((prev) => [...prev, item.id]);
+                                                                } else {
+                                                                    setSelectedStagedIds((prev) =>
+                                                                        prev.filter((id) => id !== item.id)
+                                                                    );
+                                                                }
+                                                            }}
+                                                            aria-label={`Pilih ulasan dari ${item.nama_reviewer}`}
+                                                        />
+                                                    </td>
+
+                                                    {/* Status DB */}
+                                                    <td className="px-3 py-2.5">
+                                                        {item.status_action === 'new' ? (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                                                                + BARU
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30">
+                                                                UPDATE
+                                                            </span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Target Showroom */}
+                                                    <td className="px-4 py-2.5">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-semibold text-foreground text-xs">
+                                                                {item.nama_dealer || `Showroom #${item.dealer_id}`}
+                                                            </span>
+                                                            {item.kode_dealer && (
+                                                                <span className="text-[10px] font-mono text-muted-foreground">
+                                                                    {item.kode_dealer}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+
+                                                    {/* Reviewer */}
+                                                    <td className="px-4 py-2.5">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="size-6 shrink-0 rounded-full bg-muted flex items-center justify-center font-bold text-[10px] text-muted-foreground uppercase border">
+                                                                {item.nama_reviewer ? item.nama_reviewer.charAt(0) : 'U'}
+                                                            </div>
+                                                            <div className="flex flex-col max-w-[140px] truncate">
+                                                                <span className="font-medium text-foreground truncate" title={item.nama_reviewer}>
+                                                                    {item.nama_reviewer}
+                                                                </span>
+                                                                {item.author_profile_url && (
+                                                                    <a
+                                                                        href={item.author_profile_url}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="text-[10px] text-primary flex items-center gap-0.5 hover:underline"
+                                                                    >
+                                                                        <span>Profil Google</span>
+                                                                        <ExternalLink className="size-2.5" />
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+
+                                                    {/* Rating */}
+                                                    <td className="px-3 py-2.5 text-center">
+                                                        <div className="inline-flex items-center gap-1 font-bold text-amber-500 bg-amber-500/10 dark:bg-amber-500/20 px-2 py-0.5 rounded-md text-xs">
+                                                            <Star className="size-3 fill-amber-400 text-amber-500" />
+                                                            <span>{Number(item.star_rate).toFixed(0)}</span>
+                                                        </div>
+                                                    </td>
+
+                                                    {/* Tanggal Ulasan */}
+                                                    <td className="px-3 py-2.5">
+                                                        <div className="flex flex-col">
+                                                            <span className="font-mono text-xs">{item.tanggal_publish_review}</span>
+                                                            {item.relative_time && (
+                                                                <span className="text-[10px] text-muted-foreground">
+                                                                    {item.relative_time}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+
+                                                    {/* Isi Ulasan */}
+                                                    <td className="px-4 py-2.5 max-w-[320px] whitespace-normal">
+                                                        {item.review ? (
+                                                            <div className="group relative">
+                                                                <p className="line-clamp-2 text-xs text-foreground/90 leading-relaxed">
+                                                                    {item.review}
+                                                                </p>
+                                                                {item.review.length > 80 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setPreviewReviewDetail(item)}
+                                                                        className="text-[10px] text-primary hover:underline font-medium mt-0.5 cursor-pointer"
+                                                                    >
+                                                                        Baca selengkapnya
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="italic text-muted-foreground text-[11px]">
+                                                                (Rating bintang tanpa ulasan teks)
+                                                            </span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Respon Owner */}
+                                                    <td className="px-3 py-2.5">
+                                                        {item.respon_from_owner ? (
+                                                            <div className="flex flex-col max-w-[160px]">
+                                                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                                                    <CheckCircle2 className="size-3" />
+                                                                    <span>Ada Respon</span>
+                                                                </span>
+                                                                {item.respon && (
+                                                                    <span
+                                                                        className="text-[10px] text-muted-foreground truncate"
+                                                                        title={item.respon}
+                                                                    >
+                                                                        {item.respon}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[10px] text-muted-foreground">
+                                                                Belum direspon
+                                                            </span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Aksi */}
+                                                    <td className="px-3 py-2.5 text-right">
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => setPreviewReviewDetail(item)}
+                                                                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground cursor-pointer"
+                                                                title="Lihat detail lengkap ulasan"
+                                                            >
+                                                                <Eye className="size-3.5" />
+                                                            </Button>
+                                                            {item.google_review_url && (
+                                                                <a
+                                                                    href={item.google_review_url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="inline-flex items-center justify-center h-7 w-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted"
+                                                                    title="Buka ulasan di Google Maps"
+                                                                >
+                                                                    <ExternalLink className="size-3.5" />
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination Footer */}
+                        {filteredStagedList.length > 0 && (
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-muted-foreground pt-2">
+                                <div className="flex items-center gap-2">
+                                    <span>
+                                        Baris per halaman:
+                                    </span>
+                                    <AntSelect
+                                        size="small"
+                                        value={stagedPageSize}
+                                        onChange={(val) => setStagedPageSize(val)}
+                                        options={[
+                                            { value: 10, label: '10' },
+                                            { value: 25, label: '25' },
+                                            { value: 50, label: '50' },
+                                            { value: 100, label: '100' },
+                                        ]}
+                                        className="w-16"
+                                    />
+                                    <span>
+                                        Menampilkan{' '}
+                                        <strong>
+                                            {(stagedPage - 1) * stagedPageSize + 1} -{' '}
+                                            {Math.min(stagedPage * stagedPageSize, filteredStagedList.length)}
+                                        </strong>{' '}
+                                        dari <strong>{filteredStagedList.length}</strong> ulasan
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <span>
+                                        Halaman <strong>{stagedPage}</strong> dari <strong>{totalStagedPages}</strong>
+                                    </span>
+                                    <div className="flex items-center gap-1">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={stagedPage <= 1}
+                                            onClick={() => setStagedPage((p) => Math.max(1, p - 1))}
+                                            className="h-7 w-7 p-0 cursor-pointer"
+                                        >
+                                            <ChevronLeft className="size-3.5" />
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={stagedPage >= totalStagedPages}
+                                            onClick={() => setStagedPage((p) => Math.min(totalStagedPages, p + 1))}
+                                            className="h-7 w-7 p-0 cursor-pointer"
+                                        >
+                                            <ChevronRight className="size-3.5" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
                 {/* Jadwal Scraping Otomatis (Auto Scrap) */}
                 <Card className="border shadow-sm">
                     <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 bg-muted/10 border-b">
@@ -1763,6 +2534,212 @@ export default function SyncReviewsPage({
                         </div>
                     </form>
                 </AntModal>
+
+                {/* Modal Konfirmasi Masukkan ke Database */}
+                <Dialog open={isConfirmCommitModalOpen} onOpenChange={setIsConfirmCommitModalOpen}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <div className="flex items-center gap-2 text-primary">
+                                <Database className="size-5" />
+                                <DialogTitle>Konfirmasi Masukkan ke Database</DialogTitle>
+                            </div>
+                            <DialogDescription className="text-xs pt-1.5">
+                                Anda akan memasukkan ulasan hasil scraping ke dalam database MySQL.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-3 py-2 text-xs">
+                            <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground">Jumlah Ulasan:</span>
+                                    <span className="font-semibold text-sm">
+                                        {selectedStagedIds.length > 0 ? selectedStagedIds.length : stagedList.length} ulasan
+                                        {selectedStagedIds.length > 0 && ' (Pilihan)'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50">
+                                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
+                                        <Plus className="size-3" /> Ulasan Baru (+ Baru):
+                                    </span>
+                                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                        {(selectedStagedIds.length > 0
+                                            ? stagedList.filter((item) => selectedStagedIds.includes(item.id) && item.status_action === 'new')
+                                            : stagedList.filter((item) => item.status_action === 'new')
+                                        ).length} ulasan
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px]">
+                                    <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                                        <RefreshCw className="size-3" /> Pembaruan Ulasan:
+                                    </span>
+                                    <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                        {(selectedStagedIds.length > 0
+                                            ? stagedList.filter((item) => selectedStagedIds.includes(item.id) && item.status_action === 'update')
+                                            : stagedList.filter((item) => item.status_action === 'update')
+                                        ).length} ulasan
+                                    </span>
+                                </div>
+                            </div>
+
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                Ulasan akan disimpan ke tabel ulasan, rating showroom akan diperbarui otomatis, dan daftar pratinjau ini akan dikosongkan setelah proses selesai.
+                            </p>
+                        </div>
+
+                        <DialogFooter className="gap-2 sm:gap-0">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={isCommitting}
+                                onClick={() => setIsConfirmCommitModalOpen(false)}
+                            >
+                                Batal
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                disabled={isCommitting}
+                                onClick={() => handleCommitStagedReviews(selectedStagedIds.length > 0)}
+                                className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5"
+                            >
+                                {isCommitting ? (
+                                    <>
+                                        <Loader2 className="size-3.5 animate-spin" />
+                                        <span>Menyimpan ke DB...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Database className="size-3.5" />
+                                        <span>Ya, Masukkan Sekarang</span>
+                                    </>
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Modal Detail Ulasan Staging */}
+                <Dialog
+                    open={Boolean(previewReviewDetail)}
+                    onOpenChange={(open) => !open && setPreviewReviewDetail(null)}
+                >
+                    <DialogContent className="max-w-lg">
+                        <DialogHeader>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
+                                        {previewReviewDetail?.nama_reviewer?.charAt(0).toUpperCase() || 'U'}
+                                    </div>
+                                    <div>
+                                        <DialogTitle className="text-sm font-semibold">
+                                            {previewReviewDetail?.nama_reviewer}
+                                        </DialogTitle>
+                                        <DialogDescription className="text-[11px]">
+                                            {previewReviewDetail?.kode_dealer} - {previewReviewDetail?.nama_dealer}
+                                        </DialogDescription>
+                                    </div>
+                                </div>
+                                {previewReviewDetail?.status_action === 'new' ? (
+                                    <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[10px]">
+                                        + Baru
+                                    </Badge>
+                                ) : (
+                                    <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 text-[10px]">
+                                        Pembaruan
+                                    </Badge>
+                                )}
+                            </div>
+                        </DialogHeader>
+
+                        {previewReviewDetail && (
+                            <div className="space-y-3 py-2 text-xs">
+                                <div className="flex items-center justify-between border-b pb-2">
+                                    <div className="flex items-center gap-1">
+                                        {Array.from({ length: 5 }).map((_, i) => (
+                                            <Star
+                                                key={i}
+                                                className={`size-3.5 ${
+                                                    i < previewReviewDetail.star_rate
+                                                        ? 'fill-amber-400 text-amber-500'
+                                                        : 'text-muted-foreground/30'
+                                                }`}
+                                            />
+                                        ))}
+                                        <span className="font-semibold ml-1 text-xs">
+                                            {previewReviewDetail.star_rate}.0
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                        <Clock className="size-3" />
+                                        <span>{previewReviewDetail.relative_time || previewReviewDetail.tanggal_publish_review}</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <Label className="text-[11px] font-semibold text-muted-foreground">
+                                        Isi Ulasan:
+                                    </Label>
+                                    <div className="rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">
+                                        {previewReviewDetail.review || (
+                                            <span className="italic text-muted-foreground">
+                                                (Ulasan rating bintang tanpa teks)
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {previewReviewDetail.respon_from_owner ? (
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between text-[11px]">
+                                            <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                                <CheckCircle2 className="size-3" />
+                                                Respon Pemilik Showroom:
+                                            </span>
+                                            {previewReviewDetail.tanggal_respon && (
+                                                <span className="text-muted-foreground">
+                                                    {previewReviewDetail.tanggal_respon}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5 text-xs text-foreground leading-relaxed whitespace-pre-wrap">
+                                            {previewReviewDetail.respon}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-lg border border-dashed p-2.5 text-center text-[11px] text-muted-foreground">
+                                        Belum ada respon dari showroom untuk ulasan ini.
+                                    </div>
+                                )}
+
+                                {previewReviewDetail.google_review_url && (
+                                    <div className="pt-1">
+                                        <a
+                                            href={previewReviewDetail.google_review_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+                                        >
+                                            <ExternalLink className="size-3.5" />
+                                            <span>Buka ulasan asli di Google Maps</span>
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPreviewReviewDetail(null)}
+                            >
+                                Tutup
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Showroom Quick Table */}
                 <Card>

@@ -4,6 +4,7 @@ use App\Models\Dealer;
 use App\Models\Review;
 use App\Models\User;
 use App\Services\GoogleReviewScraperService;
+use App\Services\SyncReviewServerService;
 use Illuminate\Support\Facades\Http;
 
 test('scraper service correctly detects healthy service', function (): void {
@@ -367,6 +368,19 @@ test('reviews:sync-server artisan command executes server sync in background', f
         ->expectsOutputToContain('Proses sinkronisasi server selesai.')
         ->assertSuccessful();
 
+    // Verify reviews are staged and NOT automatically inserted to database
+    $syncService = app(SyncReviewServerService::class);
+    $staged = $syncService->getStagedReviews();
+    expect($staged)->toHaveCount(1);
+    expect($staged[0]['nama_reviewer'])->toBe('Budi Santoso');
+    $this->assertDatabaseMissing('reviews', [
+        'dealer_id' => $dealer->id,
+        'nama_reviewer' => 'Budi Santoso',
+    ]);
+
+    // Commit staged reviews manually
+    $syncService->commitStagedReviews();
+
     $this->assertDatabaseHas('reviews', [
         'dealer_id' => $dealer->id,
         'nama_reviewer' => 'Budi Santoso',
@@ -435,4 +449,79 @@ test('scraper service parses Indonesian relative dates for owner response correc
     expect($jokoReview->respon_from_owner)->toBeTrue();
     expect($jokoReview->tanggal_respon)->not->toBeNull();
     expect($jokoReview->tanggal_respon->format('Y-m-d'))->toBe('2026-09-20');
+});
+
+test('super admin can commit staged reviews to database via post endpoint', function (): void {
+    $admin = User::factory()->create(['role' => 'super_admin']);
+    $dealer = Dealer::factory()->create();
+
+    $syncService = app(SyncReviewServerService::class);
+    $syncService->saveStagedReviews([
+        [
+            'id' => 'staged-uuid-1',
+            'dealer_id' => $dealer->id,
+            'kode_dealer' => $dealer->kode_dealer,
+            'nama_dealer' => $dealer->nama_dealer,
+            'nama_reviewer' => 'Reviewer Preview 1',
+            'star_rate' => 5.0,
+            'tanggal_publish_review' => '2026-10-01',
+            'review' => 'Ulasan pratinjau yang bagus',
+            'respon_from_owner' => false,
+            'status_action' => 'new',
+        ],
+        [
+            'id' => 'staged-uuid-2',
+            'dealer_id' => $dealer->id,
+            'kode_dealer' => $dealer->kode_dealer,
+            'nama_dealer' => $dealer->nama_dealer,
+            'nama_reviewer' => 'Reviewer Preview 2',
+            'star_rate' => 4.0,
+            'tanggal_publish_review' => '2026-10-02',
+            'review' => 'Ulasan pratinjau kedua',
+            'respon_from_owner' => false,
+            'status_action' => 'new',
+        ],
+    ]);
+
+    // Commit only the first review
+    $response = $this->actingAs($admin)->postJson('/reviews/sync/commit', [
+        'selected_ids' => ['staged-uuid-1'],
+    ]);
+
+    $response->assertSuccessful();
+    $response->assertJson([
+        'success' => true,
+        'result' => [
+            'imported' => 1,
+            'updated' => 0,
+            'total' => 1,
+        ],
+    ]);
+
+    $this->assertDatabaseHas('reviews', [
+        'dealer_id' => $dealer->id,
+        'nama_reviewer' => 'Reviewer Preview 1',
+    ]);
+    $this->assertDatabaseMissing('reviews', [
+        'dealer_id' => $dealer->id,
+        'nama_reviewer' => 'Reviewer Preview 2',
+    ]);
+
+    // Check remaining staged review
+    $remaining = $syncService->getStagedReviews();
+    expect($remaining)->toHaveCount(1);
+    expect($remaining[0]['id'])->toBe('staged-uuid-2');
+});
+
+test('super admin can clear staged reviews via clear-staged endpoint', function (): void {
+    $admin = User::factory()->create(['role' => 'super_admin']);
+    $syncService = app(SyncReviewServerService::class);
+    $syncService->saveStagedReviews([
+        ['id' => 'test-1', 'nama_reviewer' => 'Test'],
+    ]);
+
+    $response = $this->actingAs($admin)->postJson('/reviews/sync/clear-staged');
+
+    $response->assertSuccessful();
+    expect($syncService->getStagedReviews())->toBeEmpty();
 });

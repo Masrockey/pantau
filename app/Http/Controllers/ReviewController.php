@@ -289,6 +289,7 @@ class ReviewController extends Controller
             'schedules' => $schedules,
             'serverStatus' => $syncService->getStatus(),
             'serverLogs' => $syncService->getLogs(),
+            'stagedReviews' => $syncService->getStagedReviews(),
             'canManageAll' => true,
         ]);
     }
@@ -403,6 +404,7 @@ class ReviewController extends Controller
         return response()->json([
             'status' => $syncService->getStatus(),
             'logs' => $syncService->getLogs(),
+            'stagedReviews' => $syncService->getStagedReviews(),
         ]);
     }
 
@@ -477,6 +479,69 @@ class ReviewController extends Controller
             'success' => true,
             'message' => 'Log aktivitas sinkronisasi di server berhasil dibersihkan.',
             'logs' => $syncService->getLogs(),
+        ]);
+    }
+
+    /**
+     * Get the list of staged reviews waiting for database commit.
+     */
+    public function getStagedReviews(Request $request, SyncReviewServerService $syncService): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Hanya Super Admin yang dapat mengakses pratinjau ulasan.',
+            ], 403);
+        }
+
+        return response()->json([
+            'stagedReviews' => $syncService->getStagedReviews(),
+        ]);
+    }
+
+    /**
+     * Commit staged reviews into the database manually.
+     */
+    public function commitStagedReviews(Request $request, SyncReviewServerService $syncService): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Hanya Super Admin yang dapat memasukkan ulasan ke database.',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'selected_ids' => ['nullable', 'array'],
+            'selected_ids.*' => ['string'],
+        ]);
+
+        $selectedIds = $validated['selected_ids'] ?? null;
+        $result = $syncService->commitStagedReviews($selectedIds);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Berhasil memasukkan {$result['imported']} ulasan baru dan memperbarui {$result['updated']} ulasan ke database.",
+            'result' => $result,
+            'stagedReviews' => $syncService->getStagedReviews(),
+        ]);
+    }
+
+    /**
+     * Clear all staged reviews in the preview cache.
+     */
+    public function clearStagedReviews(Request $request, SyncReviewServerService $syncService): JsonResponse
+    {
+        if (! $request->user()?->isSuperAdmin()) {
+            return response()->json([
+                'message' => 'Hanya Super Admin yang dapat membersihkan pratinjau ulasan.',
+            ], 403);
+        }
+
+        $syncService->clearStagedReviews();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Daftar pratinjau hasil scraping berhasil dibersihkan.',
+            'stagedReviews' => [],
         ]);
     }
 
