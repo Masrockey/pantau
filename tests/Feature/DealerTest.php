@@ -669,3 +669,90 @@ test('dealer sync fallback extracts place name from redirected Google Maps URL w
         'longitude' => 118.4620428,
     ]);
 });
+
+test('guests are redirected to the login page from dealer export', function (): void {
+    $response = $this->get(route('dealers.export'));
+
+    $response->assertRedirect(route('login'));
+});
+
+test('authenticated users can export dealers to xlsx', function (): void {
+    $user = User::factory()->create();
+    Dealer::factory()->create([
+        'kode_dealer' => 'DLR001',
+        'nama_dealer' => 'Dealer Nusantara Jakarta',
+    ]);
+
+    $response = $this->actingAs($user)->get(route('dealers.export'));
+
+    $response->assertOk();
+    $response->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect((string) $response->headers->get('Content-Disposition'))->toContain('dealers_export_');
+    expect((string) $response->headers->get('Content-Disposition'))->toContain('.xlsx');
+    expect(strlen((string) $response->getContent()))->toBeGreaterThan(100);
+});
+
+test('authenticated users can export dealers to csv', function (): void {
+    $user = User::factory()->create();
+    Dealer::factory()->create([
+        'kode_dealer' => 'DLR001',
+        'nama_dealer' => 'Dealer Nusantara Jakarta',
+    ]);
+
+    $response = $this->actingAs($user)->get(route('dealers.export', ['format' => 'csv']));
+
+    $response->assertOk();
+    $response->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
+    expect((string) $response->headers->get('Content-Disposition'))->toContain('dealers_export_');
+    expect((string) $response->headers->get('Content-Disposition'))->toContain('.csv');
+    $content = (string) $response->getContent();
+    expect($content)->toContain('DLR001');
+    expect($content)->toContain('Dealer Nusantara Jakarta');
+});
+
+test('dealer export applies search filter', function (): void {
+    $user = User::factory()->create();
+    Dealer::factory()->create([
+        'kode_dealer' => 'DLR-MTR',
+        'nama_dealer' => 'Dealer Mataram Honda',
+    ]);
+    Dealer::factory()->create([
+        'kode_dealer' => 'DLR-DPS',
+        'nama_dealer' => 'Dealer Denpasar Honda',
+    ]);
+
+    $response = $this->actingAs($user)->get(route('dealers.export', [
+        'format' => 'csv',
+        'search' => 'Mataram',
+    ]));
+
+    $response->assertOk();
+    $content = (string) $response->getContent();
+    expect($content)->toContain('DLR-MTR');
+    expect($content)->not->toContain('DLR-DPS');
+});
+
+test('non global users only export their scoped dealer', function (): void {
+    $dealerA = Dealer::factory()->create([
+        'kode_dealer' => 'DLR-A',
+        'nama_dealer' => 'Dealer A',
+    ]);
+    Dealer::factory()->create([
+        'kode_dealer' => 'DLR-B',
+        'nama_dealer' => 'Dealer B',
+    ]);
+
+    $dealerUser = User::factory()->create([
+        'role' => 'dealer',
+        'dealer_id' => $dealerA->id,
+    ]);
+
+    $response = $this->actingAs($dealerUser)->get(route('dealers.export', [
+        'format' => 'csv',
+    ]));
+
+    $response->assertOk();
+    $content = (string) $response->getContent();
+    expect($content)->toContain('DLR-A');
+    expect($content)->not->toContain('DLR-B');
+});

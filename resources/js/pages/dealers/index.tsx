@@ -3,6 +3,7 @@ import {
     AlertCircle,
     Building2,
     CheckCircle2,
+    ChevronDown,
     Download,
     Edit2,
     ExternalLink,
@@ -42,6 +43,12 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -154,6 +161,22 @@ export default function DealersIndex({
             {},
             { preserveState: true, replace: true },
         );
+    };
+
+    const handleExport = (format: 'xlsx' | 'csv' = 'xlsx') => {
+        const queryParams: Record<string, string> = { format };
+        if (search) {
+            queryParams.search = search;
+        }
+
+        antMessage.loading({
+            content: `Menyiapkan berkas ekspor ${format.toUpperCase()}...`,
+            key: 'exporting',
+            duration: 1.5,
+        });
+
+        const url = dealersRoute.export.url({ query: queryParams });
+        window.location.href = url;
     };
 
     const formatFileSize = (bytes: number): string => {
@@ -533,8 +556,8 @@ export default function DealersIndex({
                         </p>
                     </div>
 
-                    {canManageAll && (
-                        <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {canManageAll && (
                             <AntButton
                                 onClick={() => {
                                     setSyncAllResult(null);
@@ -548,25 +571,59 @@ export default function DealersIndex({
                             >
                                 Sync Google Maps
                             </AntButton>
-                            <AntButton
-                                onClick={handleOpenImport}
-                                icon={
-                                    <Upload className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                                }
-                                className="border-emerald-600/30 text-emerald-700 dark:text-emerald-400 font-medium"
-                            >
-                                Import Excel
-                            </AntButton>
-                            <AntButton
-                                type="primary"
-                                onClick={handleOpenCreate}
-                                icon={<Plus className="size-3.5" />}
-                                className="font-medium"
-                            >
-                                Tambah Dealer
-                            </AntButton>
-                        </div>
-                    )}
+                        )}
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <AntButton
+                                    icon={
+                                        <Download className="size-3.5 text-amber-600 dark:text-amber-400" />
+                                    }
+                                    className="border-amber-600/30 text-amber-700 dark:text-amber-400 font-medium hover:border-amber-500"
+                                >
+                                    Export Data <ChevronDown className="ml-1 size-3 opacity-70" />
+                                </AntButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-52">
+                                <DropdownMenuItem
+                                    onClick={() => handleExport('xlsx')}
+                                    className="cursor-pointer"
+                                >
+                                    <FileSpreadsheet className="mr-2 size-4 text-emerald-600" />
+                                    <span>Format Excel (.xlsx)</span>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onClick={() => handleExport('csv')}
+                                    className="cursor-pointer"
+                                >
+                                    <Download className="mr-2 size-4 text-blue-600" />
+                                    <span>Format CSV (.csv)</span>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        {canManageAll && (
+                            <>
+                                <AntButton
+                                    onClick={handleOpenImport}
+                                    icon={
+                                        <Upload className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                                    }
+                                    className="border-emerald-600/30 text-emerald-700 dark:text-emerald-400 font-medium"
+                                >
+                                    Import Excel
+                                </AntButton>
+                                <AntButton
+                                    type="primary"
+                                    onClick={handleOpenCreate}
+                                    icon={<Plus className="size-3.5" />}
+                                    className="font-medium"
+                                >
+                                    Tambah Dealer
+                                </AntButton>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {/* Filter and Search Bar */}

@@ -21,6 +21,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('rating-simulasi', [RatingSimulationController::class, 'index'])->name('rating-simulasi.index');
 
     Route::get('dealers/template', [DealerController::class, 'template'])->name('dealers.template');
+    Route::get('dealers/export', [DealerController::class, 'export'])->name('dealers.export');
     Route::post('dealers/import', [DealerController::class, 'import'])->name('dealers.import');
     Route::get('dealers/syncable', [DealerController::class, 'syncableList'])->name('dealers.syncable');
     Route::post('dealers/sync-all', [DealerController::class, 'syncAll'])->name('dealers.sync-all');

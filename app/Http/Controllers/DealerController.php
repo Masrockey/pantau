@@ -162,6 +162,62 @@ class DealerController extends Controller
     }
 
     /**
+     * Export dealers to XLSX or CSV spreadsheet based on active filters.
+     */
+    public function export(Request $request, DealerExcelService $excelService): SymfonyResponse
+    {
+        $user = $request->user();
+        $isGlobal = $user?->hasGlobalAccess() ?? false;
+        $userDealerId = $user?->dealer_id;
+
+        $search = $request->string('search')->trim()->value();
+        $format = strtolower($request->string('format', 'xlsx')->trim()->value());
+
+        $dealers = Dealer::query()
+            ->when(! $isGlobal, function ($query) use ($userDealerId): void {
+                if ($userDealerId) {
+                    $query->where('id', $userDealerId);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            })
+            ->when($search !== '', function ($query) use ($search): void {
+                $query->where(function ($q) use ($search): void {
+                    $q->where('kode_dealer', 'like', "%{$search}%")
+                        ->orWhere('nama_dealer', 'like', "%{$search}%")
+                        ->orWhere('nama_dealer_gbp', 'like', "%{$search}%")
+                        ->orWhere('alamat', 'like', "%{$search}%")
+                        ->orWhere('kecamatan', 'like', "%{$search}%")
+                        ->orWhere('kelurahan', 'like', "%{$search}%")
+                        ->orWhere('no_telp_showroom', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('kode_dealer', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        if ($format === 'csv') {
+            $content = $excelService->exportCsv($dealers);
+            $filename = 'dealers_export_'.now()->format('Ymd_His').'.csv';
+
+            return response($content, 200, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+                'Content-Length' => (string) strlen($content),
+            ]);
+        }
+
+        $content = $excelService->export($dealers);
+        $filename = 'dealers_export_'.now()->format('Ymd_His').'.xlsx';
+
+        return response($content, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Content-Length' => (string) strlen($content),
+        ]);
+    }
+
+    /**
      * Import dealers from an uploaded Excel or CSV file.
      */
     public function import(ImportDealerRequest $request, DealerExcelService $excelService): RedirectResponse
