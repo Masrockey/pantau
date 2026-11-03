@@ -23,3 +23,32 @@ export interface SocialMediaProfile {
     updated_at?: string;
 }
 
+export type JenisSosmed = 'ig' | 'TikTok' | 'facebook' | 'youtube';
+
+export type BrandSosmed =
+    | 'Honda'
+    | 'Kawasaki'
+    | 'Yamaha'
+    | 'Aprilia'
+    | 'TVS'
+    | 'Bajaj'
+    | 'KTM'
+    | 'Piaggio'
+    | 'MV Agusta'
+    | 'All Brand';
+
+export interface SocialMediaPosting {
+    id: number;
+    social_media_profile_id: number;
+    jenis_sosmed: JenisSosmed | string;
+    tanggal_rilis?: string | null;
+    bulan_entry?: string | null;
+    caption?: string | null;
+    link?: string | null;
+    brand: BrandSosmed | string;
+    total_komentar: number;
+    total_views: number;
+    created_at?: string;
+    updated_at?: string;
+    profile?: Pick<SocialMediaProfile, 'id' | 'nama_lengkap' | 'email' | 'no_hp' | 'domisili'> | null;
+}

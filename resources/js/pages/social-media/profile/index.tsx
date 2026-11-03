@@ -100,6 +100,15 @@ const formatFollower = (num?: number | null) => {
     return num.toLocaleString('id-ID');
 };
 
+const dialogSelectProps = {
+    virtual: false,
+    getPopupContainer: (trigger: HTMLElement): HTMLElement =>
+        (trigger.closest('[role="dialog"]') as HTMLElement) || trigger.parentElement || document.body,
+    dropdownRender: (menu: React.ReactNode) => (
+        <div onWheel={(e) => e.stopPropagation()}>{menu}</div>
+    ),
+};
+
 export default function SocialMediaProfilesIndex({
     profiles,
     filters,
@@ -772,6 +781,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={createForm.errors.tanggal_lahir} />
                             </div>
@@ -786,6 +796,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={createForm.errors.bulan_lahir} />
                             </div>
@@ -948,6 +959,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={createForm.errors.ukuran_helm} />
                             </div>
@@ -962,6 +974,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={createForm.errors.ukuran_jaket} />
                             </div>
@@ -976,6 +989,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={createForm.errors.ukuran_sarung_tangan} />
                             </div>
@@ -990,6 +1004,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={createForm.errors.ukuran_sepatu} />
                             </div>
@@ -1084,6 +1099,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={editForm.errors.tanggal_lahir} />
                             </div>
@@ -1098,6 +1114,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={editForm.errors.bulan_lahir} />
                             </div>
@@ -1260,6 +1277,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={editForm.errors.ukuran_helm} />
                             </div>
@@ -1274,6 +1292,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={editForm.errors.ukuran_jaket} />
                             </div>
@@ -1288,6 +1307,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={editForm.errors.ukuran_sarung_tangan} />
                             </div>
@@ -1302,6 +1322,7 @@ export default function SocialMediaProfilesIndex({
                                     allowClear
                                     className="w-full text-xs"
                                     size="small"
+                                    {...dialogSelectProps}
                                 />
                                 <InputError message={editForm.errors.ukuran_sepatu} />
                             </div>

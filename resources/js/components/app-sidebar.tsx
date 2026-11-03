@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Activity, BarChart3, Building2, Calculator, Compass, LayoutGrid, RefreshCw, Star, UserCircle, Users } from 'lucide-react';
+import { Activity, BarChart3, Building2, Calculator, Compass, LayoutGrid, RefreshCw, Share2, Star, UserCircle, Users } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -21,6 +21,7 @@ import monitoringFeedbackRoute from '@/routes/monitoring-feedback';
 import ratingSimulasi from '@/routes/rating-simulasi';
 import reviews from '@/routes/reviews';
 import syncRoute from '@/routes/reviews/sync';
+import socialMediaPostingRoute from '@/routes/social-media/posting';
 import socialMediaProfileRoute from '@/routes/social-media/profile';
 import users from '@/routes/users';
 import type { NavItem } from '@/types';
@@ -59,6 +60,11 @@ const gbpNavItems: NavItem[] = [
 ];
 
 const socialMediaNavItems: NavItem[] = [
+    {
+        title: 'Sosmed Posting',
+        href: socialMediaPostingRoute.index(),
+        icon: Share2,
+    },
     {
         title: 'Profile',
         href: socialMediaProfileRoute.index(),

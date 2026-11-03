@@ -16,6 +16,9 @@ class SocialMediaProfileExcelService
      */
     public function import(UploadedFile $file, bool $updateExisting = true): array
     {
+        @set_time_limit(300);
+        @ini_set('max_execution_time', '300');
+
         $rows = $this->readRows($file);
 
         if (empty($rows)) {

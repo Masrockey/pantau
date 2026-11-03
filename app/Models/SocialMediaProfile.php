@@ -5,6 +5,7 @@ namespace App\Models;
 use Database\Factories\SocialMediaProfileFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SocialMediaProfile extends Model
 {
@@ -52,5 +53,13 @@ class SocialMediaProfile extends Model
             'total_follower_fb' => 'integer',
             'tanggal_lahir' => 'integer',
         ];
+    }
+
+    /**
+     * Get the social media postings associated with the profile.
+     */
+    public function postings(): HasMany
+    {
+        return $this->hasMany(SocialMediaPosting::class, 'social_media_profile_id');
     }
 }

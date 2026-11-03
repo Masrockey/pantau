@@ -8,6 +8,7 @@ use App\Http\Controllers\MonitoringFeedbackController;
 use App\Http\Controllers\RatingSimulationController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ScrapingScheduleController;
+use App\Http\Controllers\SocialMediaPostingController;
 use App\Http\Controllers\SocialMediaProfileController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -51,6 +52,10 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('reviews', ReviewController::class)->except(['create', 'show', 'edit']);
 
     Route::prefix('social-media')->name('social-media.')->group(function () {
+        Route::get('posting/template', [SocialMediaPostingController::class, 'template'])->name('posting.template');
+        Route::get('posting/export', [SocialMediaPostingController::class, 'export'])->name('posting.export');
+        Route::post('posting/import', [SocialMediaPostingController::class, 'import'])->name('posting.import');
+        Route::resource('posting', SocialMediaPostingController::class)->except(['create', 'show', 'edit']);
         Route::get('profile/template', [SocialMediaProfileController::class, 'template'])->name('profile.template');
         Route::get('profile/export', [SocialMediaProfileController::class, 'export'])->name('profile.export');
         Route::post('profile/import', [SocialMediaProfileController::class, 'import'])->name('profile.import');

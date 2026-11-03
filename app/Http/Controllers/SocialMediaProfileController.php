@@ -152,6 +152,9 @@ class SocialMediaProfileController extends Controller
      */
     public function import(ImportSocialMediaProfileRequest $request, SocialMediaProfileExcelService $excelService): RedirectResponse
     {
+        @set_time_limit(300);
+        @ini_set('max_execution_time', '300');
+
         /** @var UploadedFile $file */
         $file = $request->file('file');
         $updateExisting = $request->boolean('update_existing', true);
