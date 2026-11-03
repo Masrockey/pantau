@@ -3,4 +3,5 @@ export type * from './dealer';
 export type * from './navigation';
 export type * from './pagination';
 export type * from './review';
+export type * from './social-media';
 export type * from './ui';

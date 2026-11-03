@@ -13,7 +13,11 @@ export function useFlashToast(): void {
                 return;
             }
 
-            toast[data.type](data.message);
+            if (typeof toast[data.type] === 'function') {
+                toast[data.type](data.message);
+            } else {
+                toast(data.message);
+            }
         });
     }, []);
 }

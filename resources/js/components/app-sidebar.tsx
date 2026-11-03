@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Activity, BarChart3, Building2, Calculator, Compass, LayoutGrid, RefreshCw, Star, Users } from 'lucide-react';
+import { Activity, BarChart3, Building2, Calculator, Compass, LayoutGrid, RefreshCw, Star, UserCircle, Users } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -21,6 +21,7 @@ import monitoringFeedbackRoute from '@/routes/monitoring-feedback';
 import ratingSimulasi from '@/routes/rating-simulasi';
 import reviews from '@/routes/reviews';
 import syncRoute from '@/routes/reviews/sync';
+import socialMediaProfileRoute from '@/routes/social-media/profile';
 import users from '@/routes/users';
 import type { NavItem } from '@/types';
 
@@ -54,6 +55,14 @@ const gbpNavItems: NavItem[] = [
         title: 'Rating Simulasi',
         href: ratingSimulasi.index(),
         icon: Calculator,
+    },
+];
+
+const socialMediaNavItems: NavItem[] = [
+    {
+        title: 'Profile',
+        href: socialMediaProfileRoute.index(),
+        icon: UserCircle,
     },
 ];
 
@@ -108,6 +117,7 @@ export function AppSidebar() {
 
             <SidebarContent>
                 <NavMain items={gbpNavItems} label="Google Bisnis Profile" />
+                <NavMain items={socialMediaNavItems} label="Sosial Media Monitoring" />
                 {!isDealer && visibleManagementItems.length > 0 && (
                     <NavMain items={visibleManagementItems} label="Management" />
                 )}

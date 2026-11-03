@@ -8,6 +8,7 @@ use App\Http\Controllers\MonitoringFeedbackController;
 use App\Http\Controllers\RatingSimulationController;
 use App\Http\Controllers\ReviewController;
 use App\Http\Controllers\ScrapingScheduleController;
+use App\Http\Controllers\SocialMediaProfileController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -48,6 +49,13 @@ Route::middleware(['auth'])->group(function () {
     Route::post('reviews/import', [ReviewController::class, 'import'])->name('reviews.import');
     Route::get('reviews/export', [ReviewController::class, 'export'])->name('reviews.export');
     Route::resource('reviews', ReviewController::class)->except(['create', 'show', 'edit']);
+
+    Route::prefix('social-media')->name('social-media.')->group(function () {
+        Route::get('profile/template', [SocialMediaProfileController::class, 'template'])->name('profile.template');
+        Route::get('profile/export', [SocialMediaProfileController::class, 'export'])->name('profile.export');
+        Route::post('profile/import', [SocialMediaProfileController::class, 'import'])->name('profile.import');
+        Route::resource('profile', SocialMediaProfileController::class)->except(['create', 'show', 'edit']);
+    });
 });
 
 require __DIR__.'/settings.php';

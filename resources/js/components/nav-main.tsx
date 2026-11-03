@@ -19,17 +19,17 @@ import { cn } from '@/lib/utils';
 import type { NavItem } from '@/types';
 
 export function NavMain({
-    items,
+    items = [],
     label = 'Google Bisnis Profile',
     collapsible = true,
 }: {
-    items: NavItem[];
+    items?: NavItem[];
     label?: string;
     collapsible?: boolean;
 }) {
     const { isCurrentUrl } = useCurrentUrl();
 
-    if (!items || items.length === 0) {
+    if (!label && (!items || items.length === 0)) {
         return null;
     }
 
@@ -42,21 +42,29 @@ export function NavMain({
                     </SidebarGroupLabel>
                 )}
                 <SidebarMenu className="gap-0.5">
-                    {items.map((item) => (
-                        <SidebarMenuItem key={item.title}>
-                            <SidebarMenuButton
-                                asChild
-                                isActive={isCurrentUrl(item.href)}
-                                tooltip={{ children: item.title }}
-                                className="h-9 px-3 rounded-[6px] text-[13.5px] font-normal transition-all data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-semibold dark:data-[active=true]:bg-primary/20 dark:data-[active=true]:text-rose-300 hover:bg-muted/70"
-                            >
-                                <Link href={item.href} prefetch className="flex items-center gap-2.5">
-                                    {item.icon && <item.icon className="size-4 shrink-0" />}
-                                    <span>{item.title}</span>
-                                </Link>
-                            </SidebarMenuButton>
+                    {items && items.length > 0 ? (
+                        items.map((item) => (
+                            <SidebarMenuItem key={item.title}>
+                                <SidebarMenuButton
+                                    asChild
+                                    isActive={isCurrentUrl(item.href)}
+                                    tooltip={{ children: item.title }}
+                                    className="h-9 px-3 rounded-[6px] text-[13.5px] font-normal transition-all data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-semibold dark:data-[active=true]:bg-primary/20 dark:data-[active=true]:text-rose-300 hover:bg-muted/70"
+                                >
+                                    <Link href={item.href} prefetch className="flex items-center gap-2.5">
+                                        {item.icon && <item.icon className="size-4 shrink-0" />}
+                                        <span>{item.title}</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        ))
+                    ) : (
+                        <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+                            <div className="px-3 py-1.5 text-xs text-muted-foreground/50 italic select-none">
+                                Belum ada menu
+                            </div>
                         </SidebarMenuItem>
-                    ))}
+                    )}
                 </SidebarMenu>
             </SidebarGroup>
         );
@@ -76,21 +84,29 @@ export function NavMain({
                 <CollapsibleContent className="transition-all duration-200 data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down overflow-hidden group-data-[collapsible=icon]:!block">
                     <SidebarGroupContent>
                         <SidebarMenu className="gap-0.5 pt-0.5">
-                            {items.map((item) => (
-                                <SidebarMenuItem key={item.title}>
-                                    <SidebarMenuButton
-                                        asChild
-                                        isActive={isCurrentUrl(item.href)}
-                                        tooltip={{ children: item.title }}
-                                        className="h-9 px-3 rounded-[6px] text-[13.5px] font-normal transition-all data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-semibold dark:data-[active=true]:bg-primary/20 dark:data-[active=true]:text-rose-300 hover:bg-muted/70"
-                                    >
-                                        <Link href={item.href} prefetch className="flex items-center gap-2.5">
-                                            {item.icon && <item.icon className="size-4 shrink-0" />}
-                                            <span>{item.title}</span>
-                                        </Link>
-                                    </SidebarMenuButton>
+                            {items && items.length > 0 ? (
+                                items.map((item) => (
+                                    <SidebarMenuItem key={item.title}>
+                                        <SidebarMenuButton
+                                            asChild
+                                            isActive={isCurrentUrl(item.href)}
+                                            tooltip={{ children: item.title }}
+                                            className="h-9 px-3 rounded-[6px] text-[13.5px] font-normal transition-all data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-semibold dark:data-[active=true]:bg-primary/20 dark:data-[active=true]:text-rose-300 hover:bg-muted/70"
+                                        >
+                                            <Link href={item.href} prefetch className="flex items-center gap-2.5">
+                                                {item.icon && <item.icon className="size-4 shrink-0" />}
+                                                <span>{item.title}</span>
+                                            </Link>
+                                        </SidebarMenuButton>
+                                    </SidebarMenuItem>
+                                ))
+                            ) : (
+                                <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+                                    <div className="px-3 py-1.5 text-xs text-muted-foreground/50 italic select-none">
+                                        Belum ada menu
+                                    </div>
                                 </SidebarMenuItem>
-                            ))}
+                            )}
                         </SidebarMenu>
                     </SidebarGroupContent>
                 </CollapsibleContent>
