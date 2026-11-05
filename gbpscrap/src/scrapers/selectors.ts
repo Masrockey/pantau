@@ -43,9 +43,9 @@ export const SELECTORS = {
   reviewsDistributionRows: 'tr.BHOKXe[aria-label], table.ExlQHd tr[aria-label], tr[aria-label*="bintang" i], tr[aria-label*="star" i]',
 
   // Tabs & Reviews section
-  overviewTab: 'button[role="tab"][aria-label*="Ringkasan" i], button[role="tab"][aria-label*="Overview" i], button[role="tab"]:has-text("Ringkasan"), button[role="tab"]:has-text("Overview")',
-  reviewsTab: 'button[role="tab"][aria-label*="Ulasan" i], button[role="tab"][aria-label*="Reviews" i], button[role="tab"]:has-text("Ulasan"), button[role="tab"]:has-text("Reviews")',
-  aboutTab: 'button[role="tab"][aria-label*="Tentang" i], button[role="tab"][aria-label*="About" i], button[role="tab"]:has-text("Tentang"), button[role="tab"]:has-text("About")',
+  overviewTab: 'div[role="tablist"] button[role="tab"][data-tab-index="0"], button[role="tab"][aria-label*="Ringkasan" i], button[role="tab"][aria-label*="Overview" i], button[role="tab"]:has-text("Ringkasan"), button[role="tab"]:has-text("Overview")',
+  reviewsTab: 'div[role="tablist"] button[role="tab"][data-tab-index="1"], button[role="tab"][aria-label*="Ulasan" i], button[role="tab"][aria-label*="Reviews" i], button[role="tab"]:has-text("Ulasan"), button[role="tab"]:has-text("Reviews"), div.F7nice button, button[jsaction*="pane.rating.moreReviews"]',
+  aboutTab: 'div[role="tablist"] button[role="tab"][data-tab-index="2"], button[role="tab"][aria-label*="Tentang" i], button[role="tab"][aria-label*="About" i], button[role="tab"]:has-text("Tentang"), button[role="tab"]:has-text("About")',
   reviewsSortButton: 'button[aria-label*="Urutkan ulasan" i], button[aria-label*="Sort reviews" i], button[data-value*="Urutkan" i], button[data-value*="Sort" i], button[aria-label*="Paling relevan" i], button[aria-label*="Most relevant" i]',
   sortOptions: {
     relevant: 'div[role="menuitemradio"]:nth-child(1), div[role="menuitemradio"][data-index="0"]',

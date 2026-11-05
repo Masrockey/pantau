@@ -51,3 +51,4 @@ node_modules/
 /gbpscrap/storage/
 /gbpscrap/.env
 /gbpscrap/*.log
+*cookie*.json

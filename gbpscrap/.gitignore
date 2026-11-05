@@ -3,4 +3,5 @@ dist/
 storage/
 .env
 *.log
+*cookie*.json
 

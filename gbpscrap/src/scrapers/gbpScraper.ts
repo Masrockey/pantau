@@ -3,6 +3,7 @@ import type { Page, Response, Request as PlaywrightRequest } from 'playwright';
 import { SELECTORS } from './selectors.js';
 import { config } from '../config.js';
 import { proxyManager } from '../services/proxyManager.js';
+import { cookieManager } from '../services/cookieManager.js';
 
 export interface ReviewsDistribution {
   oneStar: number;
@@ -813,6 +814,12 @@ export class GBPScraper {
         'Accept-Language': `${hl}-${hl.toUpperCase()},${hl};q=0.9,en-US;q=0.8,en;q=0.7`,
       }).catch(() => {});
 
+      // Inject authenticated Google session cookies if available
+      const injectedCount = await cookieManager.injectCookies(page.context());
+      if (injectedCount > 0) {
+        log.info(`[GBPScraper] Injected ${injectedCount} authenticated Google session cookies into context`);
+      }
+
       const domains = [
         '.google.com',
         '.google.co.id',
@@ -825,30 +832,37 @@ export class GBPScraper {
         '.google.pl',
         '.google.com.au',
       ];
-      const cookies = domains.flatMap((domain) => [
-        {
-          name: 'SOCS',
-          value: 'CAESHAgBEhJnd3NfMjAyNDA3MjMtMF9SQzIaAmVuIAEaBgiA_LyuBg',
-          domain,
-          path: '/',
-          expires: Math.floor(Date.now() / 1000) + 31536000,
-        },
-        {
-          name: 'CONSENT',
-          value: 'PENDING+999',
-          domain,
-          path: '/',
-          expires: Math.floor(Date.now() / 1000) + 31536000,
-        },
-        {
-          name: 'PREF',
-          value: `hl=${hl}&gl=${hl.toUpperCase()}`,
-          domain,
-          path: '/',
-          expires: Math.floor(Date.now() / 1000) + 31536000,
-        },
-      ]);
-      await page.context().addCookies(cookies);
+
+      // Always inject PREF to set preferred language
+      const prefCookies = domains.map((domain) => ({
+        name: 'PREF',
+        value: `hl=${hl}&gl=${hl.toUpperCase()}`,
+        domain,
+        path: '/',
+        expires: Math.floor(Date.now() / 1000) + 31536000,
+      }));
+      await page.context().addCookies(prefCookies).catch(() => {});
+
+      // If no authenticated cookies were loaded, inject fallback consent cookies
+      if (injectedCount === 0) {
+        const fallbackCookies = domains.flatMap((domain) => [
+          {
+            name: 'SOCS',
+            value: 'CAESHAgBEhJnd3NfMjAyNDA3MjMtMF9SQzIaAmVuIAEaBgiA_LyuBg',
+            domain,
+            path: '/',
+            expires: Math.floor(Date.now() / 1000) + 31536000,
+          },
+          {
+            name: 'CONSENT',
+            value: 'PENDING+999',
+            domain,
+            path: '/',
+            expires: Math.floor(Date.now() / 1000) + 31536000,
+          },
+        ]);
+        await page.context().addCookies(fallbackCookies).catch(() => {});
+      }
     } catch {
       // Ignore cookie injection errors
     }
@@ -934,6 +948,10 @@ export class GBPScraper {
       }
     }
 
+    if (targetUrl.includes('entry=tts')) {
+      targetUrl = targetUrl.replace(/([?&])entry=tts(&|$)/, '$1entry=ttu$2');
+    }
+
     const currentUrl = page.url();
     const isAlreadyOnPlace =
       !currentUrl.includes('consent.google.com') &&
@@ -964,7 +982,15 @@ export class GBPScraper {
       }
     }
 
-    const afterNavUrl = page.url();
+    let afterNavUrl = page.url();
+    if (afterNavUrl.includes('entry=tts')) {
+      const fullDesktopUrl = afterNavUrl.replace(/([?&])entry=tts(&|$)/, '$1entry=ttu$2');
+      log.info(`[Limited View Detected] Switching from limited tts mode to desktop ttu: ${fullDesktopUrl}`);
+      await page.goto(fullDesktopUrl, { waitUntil: 'domcontentloaded', timeout: 35000 }).catch(() => {});
+      await this.handleConsent(page);
+      afterNavUrl = page.url();
+    }
+
     if (!afterNavUrl.includes('consent.google.com') && !afterNavUrl.includes(`hl=${hl}`)) {
       const enforcedUrl = afterNavUrl + (afterNavUrl.includes('?') ? '&' : '?') + `hl=${hl}`;
       log.info(`Enforcing requested language '${hl}' on: ${enforcedUrl}`);
