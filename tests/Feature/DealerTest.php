@@ -6,6 +6,7 @@ use App\Services\DealerExcelService;
 use App\Services\DealerSyncService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Inertia\Testing\AssertableInertia;
 
 test('guests are redirected to the login page from dealers', function (): void {
     $response = $this->get(route('dealers.index'));
@@ -755,4 +756,95 @@ test('non global users only export their scoped dealer', function (): void {
     $content = (string) $response->getContent();
     expect($content)->toContain('DLR-A');
     expect($content)->not->toContain('DLR-B');
+});
+
+test('dealers can be created and updated with nullable type_dealer', function (): void {
+    $user = User::factory()->create();
+
+    $createResponse = $this->actingAs($user)->post(route('dealers.store'), [
+        'kode_dealer' => 'DLR990',
+        'nama_dealer' => 'Dealer Type Test',
+        'type_dealer' => 'H123',
+    ]);
+
+    $createResponse->assertRedirect(route('dealers.index'));
+    $this->assertDatabaseHas('dealers', [
+        'kode_dealer' => 'DLR990',
+        'nama_dealer' => 'Dealer Type Test',
+        'type_dealer' => 'H123',
+    ]);
+
+    $dealer = Dealer::where('kode_dealer', 'DLR990')->firstOrFail();
+
+    $clearResponse = $this->actingAs($user)->put(route('dealers.update', $dealer), [
+        'kode_dealer' => 'DLR990',
+        'nama_dealer' => 'Dealer Type Test',
+        'type_dealer' => null,
+    ]);
+
+    $clearResponse->assertRedirect(route('dealers.index'));
+    $this->assertDatabaseHas('dealers', [
+        'id' => $dealer->id,
+        'type_dealer' => null,
+    ]);
+});
+
+test('dealers can be imported and exported with type_dealer and searched by type_dealer', function (): void {
+    $user = User::factory()->create();
+
+    $csvContent = "Kode Dealer,Nama Dealer,Type Dealer\n"
+        ."DLR991,Dealer Satu,H123\n"
+        ."DLR992,Dealer Dua,\n";
+
+    $file = UploadedFile::fake()->createWithContent('dealers.csv', $csvContent);
+
+    $this->actingAs($user)->post(route('dealers.import'), [
+        'file' => $file,
+        'update_existing' => true,
+    ])->assertRedirect(route('dealers.index'));
+
+    $this->assertDatabaseHas('dealers', [
+        'kode_dealer' => 'DLR991',
+        'type_dealer' => 'H123',
+    ]);
+    $this->assertDatabaseHas('dealers', [
+        'kode_dealer' => 'DLR992',
+        'type_dealer' => null,
+    ]);
+
+    $exportResponse = $this->actingAs($user)->get(route('dealers.export', [
+        'format' => 'csv',
+        'search' => 'H123',
+    ]));
+
+    $exportResponse->assertOk();
+    $exportContent = (string) $exportResponse->getContent();
+    expect($exportContent)->toContain('TYPE DEALER')
+        ->and($exportContent)->toContain('DLR991')
+        ->and($exportContent)->toContain('H123')
+        ->and($exportContent)->not->toContain('DLR992');
+});
+
+test('dealer index search filters by type_dealer', function (): void {
+    $user = User::factory()->create();
+    Dealer::factory()->create([
+        'kode_dealer' => 'DLR993',
+        'nama_dealer' => 'Dealer Match Type',
+        'type_dealer' => 'H23',
+    ]);
+    Dealer::factory()->create([
+        'kode_dealer' => 'DLR994',
+        'nama_dealer' => 'Dealer Other Type',
+        'type_dealer' => 'H123',
+    ]);
+
+    $response = $this->actingAs($user)->get(route('dealers.index', ['search' => 'H23']));
+
+    $response->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('dealers/index')
+            ->has('dealers.data', 1)
+            ->where('dealers.data.0.kode_dealer', 'DLR993')
+            ->where('dealers.data.0.type_dealer', 'H23')
+        );
 });

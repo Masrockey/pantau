@@ -334,7 +334,7 @@ class DashboardController extends Controller
                 $overviewDealersQuery->where('id', $dealerScopeId);
             }
 
-            $allDealers = $overviewDealersQuery->get(['id', 'kode_dealer', 'nama_dealer', 'star_rate', 'total_review']);
+            $allDealers = $overviewDealersQuery->get(['id', 'kode_dealer', 'nama_dealer', 'type_dealer', 'star_rate', 'total_review']);
 
             if ($dealerScopeId) {
                 $monthlyReviewsQuery->where('dealer_id', $dealerScopeId);
@@ -405,6 +405,7 @@ class DashboardController extends Controller
                     'id' => $dealer->id,
                     'kode_dealer' => $dealer->kode_dealer,
                     'nama_dealer' => $dealer->nama_dealer,
+                    'type_dealer' => $dealer->type_dealer,
                     'total_review_all' => (int) ($dealer->total_review ?? $dealer->reviews_count ?? 0),
                     'review_monthly' => $monthlyCount,
                     'gmb_score' => $dealer->star_rate !== null ? (float) $dealer->star_rate : null,
@@ -526,6 +527,7 @@ class DashboardController extends Controller
                     'id' => $dealer->id,
                     'kode_dealer' => $dealer->kode_dealer,
                     'nama_dealer' => $dealer->nama_dealer,
+                    'type_dealer' => $dealer->type_dealer,
                     'gmb_score' => $dealer->star_rate !== null ? (float) $dealer->star_rate : null,
                     'rating_1_3' => $r13,
                     'rating_4_5' => $r45,

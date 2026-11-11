@@ -64,7 +64,14 @@ class DealerOverviewController extends Controller
             $monthlyReviewsQuery->where('dealer_id', $dealerScopeId);
         }
 
-        $allDealers = $overviewDealersQuery->get(['id', 'kode_dealer', 'nama_dealer', 'star_rate', 'total_review']);
+        $availableTypeDealers = $this->resolveAvailableTypeDealers($overviewDealersQuery);
+        $selectedTypeDealers = $this->parseTypeDealerFilters(
+            $request->input('type_dealer'),
+            $availableTypeDealers,
+        );
+        $this->applyTypeDealerFilters($overviewDealersQuery, $selectedTypeDealers);
+
+        $allDealers = $overviewDealersQuery->get(['id', 'kode_dealer', 'nama_dealer', 'type_dealer', 'star_rate', 'total_review']);
 
         $monthlyReviews = $monthlyReviewsQuery->get([
             'id',
@@ -126,6 +133,7 @@ class DealerOverviewController extends Controller
                 'id' => $dealer->id,
                 'kode_dealer' => $dealer->kode_dealer,
                 'nama_dealer' => $dealer->nama_dealer,
+                'type_dealer' => $dealer->type_dealer,
                 'total_review_all' => (int) ($dealer->total_review ?? $dealer->reviews_count ?? 0),
                 'review_monthly' => $monthlyCount,
                 'gmb_score' => $dealer->star_rate !== null ? (float) $dealer->star_rate : null,
@@ -196,6 +204,8 @@ class DealerOverviewController extends Controller
             'availableMonths' => $availableMonths,
             'activeMonth' => $activeMonth,
             'selectedDealerId' => $dealerScopeId ? (string) $dealerScopeId : '',
+            'availableTypeDealers' => $availableTypeDealers,
+            'selectedTypeDealers' => $selectedTypeDealers,
             'isGlobal' => $isGlobal,
             'userRole' => $user?->role?->value ?? (string) ($user?->role ?? ''),
         ]);

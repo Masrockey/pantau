@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property string $kode_dealer
  * @property string $nama_dealer
  * @property string|null $nama_dealer_gbp
+ * @property string|null $type_dealer
  * @property string|null $link_google_maps
  * @property float|null $latitude
  * @property float|null $longitude
@@ -37,6 +38,7 @@ use Illuminate\Support\Carbon;
     'kode_dealer',
     'nama_dealer',
     'nama_dealer_gbp',
+    'type_dealer',
     'link_google_maps',
     'latitude',
     'longitude',

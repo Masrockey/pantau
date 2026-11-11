@@ -3,6 +3,7 @@ export type Dealer = {
     kode_dealer: string;
     nama_dealer: string;
     nama_dealer_gbp?: string | null;
+    type_dealer?: string | null;
     link_google_maps: string | null;
     latitude: number | string | null;
     longitude: number | string | null;

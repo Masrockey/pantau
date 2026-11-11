@@ -92,6 +92,9 @@ class DealerExcelService
             $namaDealerGbp = $colIndices['nama_dealer_gbp'] !== null
                 ? trim((string) ($row[$colIndices['nama_dealer_gbp']] ?? ''))
                 : null;
+            $typeDealer = $colIndices['type_dealer'] !== null
+                ? trim((string) ($row[$colIndices['type_dealer']] ?? ''))
+                : null;
             $jamBukaWeekday = $colIndices['jam_buka_weekday'] !== null
                 ? trim((string) ($row[$colIndices['jam_buka_weekday']] ?? ''))
                 : null;
@@ -126,6 +129,7 @@ class DealerExcelService
                     $existing->update([
                         'nama_dealer' => $namaDealer,
                         'nama_dealer_gbp' => $namaDealerGbp ?: $existing->nama_dealer_gbp,
+                        'type_dealer' => $typeDealer ?: $existing->type_dealer,
                         'link_google_maps' => $linkGmaps ?: null,
                         'latitude' => $latitude,
                         'longitude' => $longitude,
@@ -147,6 +151,7 @@ class DealerExcelService
                     'kode_dealer' => strtoupper($kodeDealer),
                     'nama_dealer' => $namaDealer,
                     'nama_dealer_gbp' => $namaDealerGbp ?: null,
+                    'type_dealer' => $typeDealer ?: null,
                     'link_google_maps' => $linkGmaps ?: null,
                     'latitude' => $latitude,
                     'longitude' => $longitude,
@@ -359,6 +364,8 @@ class DealerExcelService
      * @return array{
      *     kode_dealer: int|null,
      *     nama_dealer: int|null,
+     *     nama_dealer_gbp: int|null,
+     *     type_dealer: int|null,
      *     link_google_maps: int|null,
      *     latitude: int|null,
      *     longitude: int|null,
@@ -368,6 +375,9 @@ class DealerExcelService
      *     kecamatan: int|null,
      *     pos_code: int|null,
      *     no_telp_showroom: int|null,
+     *     jam_buka_weekday: int|null,
+     *     jam_buka_sabtu: int|null,
+     *     jam_buka_minggu: int|null,
      *     total_review: int|null
      * }
      */
@@ -377,6 +387,7 @@ class DealerExcelService
             'kode_dealer' => null,
             'nama_dealer' => null,
             'nama_dealer_gbp' => null,
+            'type_dealer' => null,
             'link_google_maps' => null,
             'latitude' => null,
             'longitude' => null,
@@ -410,6 +421,15 @@ class DealerExcelService
                 $clean === 'gbp'
             )) {
                 $indices['nama_dealer_gbp'] = $index;
+            } elseif ($indices['type_dealer'] === null && (
+                str_contains($clean, 'type dealer') ||
+                str_contains($clean, 'tipe dealer') ||
+                $clean === 'typedealer' ||
+                $clean === 'tipedealer' ||
+                $clean === 'type' ||
+                $clean === 'tipe'
+            )) {
+                $indices['type_dealer'] = $index;
             } elseif ($indices['nama_dealer'] === null && (
                 str_contains($clean, 'nama dealer') ||
                 $clean === 'nama' ||
@@ -584,11 +604,11 @@ class DealerExcelService
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
 </Relationships>');
 
-        $strings = [
-            // Headers (0-15)
+        $headers = [
             'Kode Dealer',
             'Nama Dealer',
             'Nama Dealer di GBP',
+            'Type Dealer',
             'Link Google Maps',
             'Latitude',
             'Longitude',
@@ -602,43 +622,50 @@ class DealerExcelService
             'Kelurahan',
             'Kecamatan',
             'Pos Code',
-
-            // Row 1 (16-31)
-            'DLR001',
-            'Dealer Nusantara Jakarta',
-            'Dealer Nusantara Official Jakarta',
-            'https://maps.google.com/?q=-6.200000,106.816666',
-            '-6.200000',
-            '106.816666',
-            '4.8',
-            '120',
-            '021-5551234',
-            '08.00–17.00',
-            '08.00–14.00',
-            'Tutup',
-            'Jl. Jend. Sudirman No. 123',
-            'Karet Semanggi',
-            'Setiabudi',
-            '12930',
-
-            // Row 2 (32-47)
-            'DLR002',
-            'Dealer Jaya Surabaya',
-            'Dealer Jaya Motor Surabaya',
-            'https://maps.google.com/?q=-7.257472,112.752090',
-            '-7.257472',
-            '112.752090',
-            '4.7',
-            '85',
-            '031-5556789',
-            '08.30–16.30',
-            '08.30–12.00',
-            'Tutup',
-            'Jl. Pemuda No. 45',
-            'Embong Kaliasin',
-            'Genteng',
-            '60271',
         ];
+
+        $sampleRows = [
+            [
+                'DLR001',
+                'Dealer Nusantara Jakarta',
+                'Dealer Nusantara Official Jakarta',
+                'H123',
+                'https://maps.google.com/?q=-6.200000,106.816666',
+                '-6.200000',
+                '106.816666',
+                '4.8',
+                '120',
+                '021-5551234',
+                '08.00–17.00',
+                '08.00–14.00',
+                'Tutup',
+                'Jl. Jend. Sudirman No. 123',
+                'Karet Semanggi',
+                'Setiabudi',
+                '12930',
+            ],
+            [
+                'DLR002',
+                'Dealer Jaya Surabaya',
+                'Dealer Jaya Motor Surabaya',
+                'H23',
+                'https://maps.google.com/?q=-7.257472,112.752090',
+                '-7.257472',
+                '112.752090',
+                '4.7',
+                '85',
+                '031-5556789',
+                '08.30–16.30',
+                '08.30–12.00',
+                'Tutup',
+                'Jl. Pemuda No. 45',
+                'Embong Kaliasin',
+                'Genteng',
+                '60271',
+            ],
+        ];
+
+        $strings = array_merge($headers, ...$sampleRows);
 
         $sstXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             .'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="'.count($strings).'" uniqueCount="'.count($strings).'">';
@@ -648,31 +675,27 @@ class DealerExcelService
         $sstXml .= '</sst>';
         $zip->addFromString('xl/sharedStrings.xml', $sstXml);
 
-        $cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
+        $colCount = count($headers);
+        $cols = array_map(fn (int $idx): string => chr(ord('A') + $idx), range(0, $colCount - 1));
         $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             .'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
             .'<sheetData>';
 
-        // Row 1 (Header: index 0 to 15)
         $sheetXml .= '<row r="1">';
         foreach ($cols as $i => $col) {
             $sheetXml .= '<c r="'.$col.'1" t="s"><v>'.$i.'</v></c>';
         }
         $sheetXml .= '</row>';
 
-        // Row 2 (Sample 1: index 16 to 31)
-        $sheetXml .= '<row r="2">';
-        foreach ($cols as $i => $col) {
-            $sheetXml .= '<c r="'.$col.'2" t="s"><v>'.(16 + $i).'</v></c>';
+        foreach ($sampleRows as $rowIdx => $sampleRow) {
+            $excelRow = $rowIdx + 2;
+            $offset = ($rowIdx + 1) * $colCount;
+            $sheetXml .= '<row r="'.$excelRow.'">';
+            foreach ($cols as $i => $col) {
+                $sheetXml .= '<c r="'.$col.$excelRow.'" t="s"><v>'.($offset + $i).'</v></c>';
+            }
+            $sheetXml .= '</row>';
         }
-        $sheetXml .= '</row>';
-
-        // Row 3 (Sample 2: index 32 to 47)
-        $sheetXml .= '<row r="3">';
-        foreach ($cols as $i => $col) {
-            $sheetXml .= '<c r="'.$col.'3" t="s"><v>'.(32 + $i).'</v></c>';
-        }
-        $sheetXml .= '</row>';
 
         $sheetXml .= '</sheetData>'
             .'</worksheet>';
@@ -762,19 +785,20 @@ class DealerExcelService
             'B' => ['title' => 'KODE DEALER', 'width' => 15],
             'C' => ['title' => 'NAMA DEALER', 'width' => 32],
             'D' => ['title' => 'NAMA DEALER DI GBP', 'width' => 32],
-            'E' => ['title' => 'STAR RATE', 'width' => 12],
-            'F' => ['title' => 'TOTAL REVIEW', 'width' => 15],
-            'G' => ['title' => 'NO TELP SHOWROOM', 'width' => 20],
-            'H' => ['title' => 'JAM BUKA WEEKDAY', 'width' => 20],
-            'I' => ['title' => 'JAM BUKA SABTU', 'width' => 18],
-            'J' => ['title' => 'JAM BUKA MINGGU', 'width' => 18],
-            'K' => ['title' => 'ALAMAT', 'width' => 45],
-            'L' => ['title' => 'KELURAHAN', 'width' => 20],
-            'M' => ['title' => 'KECAMATAN', 'width' => 20],
-            'N' => ['title' => 'POS CODE', 'width' => 12],
-            'O' => ['title' => 'LATITUDE', 'width' => 15],
-            'P' => ['title' => 'LONGITUDE', 'width' => 15],
-            'Q' => ['title' => 'LINK GOOGLE MAPS', 'width' => 45],
+            'E' => ['title' => 'TYPE DEALER', 'width' => 18],
+            'F' => ['title' => 'STAR RATE', 'width' => 12],
+            'G' => ['title' => 'TOTAL REVIEW', 'width' => 15],
+            'H' => ['title' => 'NO TELP SHOWROOM', 'width' => 20],
+            'I' => ['title' => 'JAM BUKA WEEKDAY', 'width' => 20],
+            'J' => ['title' => 'JAM BUKA SABTU', 'width' => 18],
+            'K' => ['title' => 'JAM BUKA MINGGU', 'width' => 18],
+            'L' => ['title' => 'ALAMAT', 'width' => 45],
+            'M' => ['title' => 'KELURAHAN', 'width' => 20],
+            'N' => ['title' => 'KECAMATAN', 'width' => 20],
+            'O' => ['title' => 'POS CODE', 'width' => 12],
+            'P' => ['title' => 'LATITUDE', 'width' => 15],
+            'Q' => ['title' => 'LONGITUDE', 'width' => 15],
+            'R' => ['title' => 'LINK GOOGLE MAPS', 'width' => 45],
         ];
 
         $sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -800,6 +824,7 @@ class DealerExcelService
             $kodeDealer = (string) ($dealer->kode_dealer ?? '');
             $namaDealer = (string) ($dealer->nama_dealer ?? '');
             $namaDealerGbp = (string) ($dealer->nama_dealer_gbp ?? '');
+            $typeDealer = (string) ($dealer->type_dealer ?? '');
             $starRate = $dealer->star_rate !== null ? number_format((float) $dealer->star_rate, 1) : '';
             $totalReview = $dealer->total_review !== null ? (string) $dealer->total_review : '';
             $noTelp = (string) ($dealer->no_telp_showroom ?? '');
@@ -819,19 +844,20 @@ class DealerExcelService
                 .'<c r="B'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($kodeDealer).'</t></is></c>'
                 .'<c r="C'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($namaDealer).'</t></is></c>'
                 .'<c r="D'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($namaDealerGbp).'</t></is></c>'
-                .'<c r="E'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($starRate).'</t></is></c>'
-                .'<c r="F'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($totalReview).'</t></is></c>'
-                .'<c r="G'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($noTelp).'</t></is></c>'
-                .'<c r="H'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($jamWeekday).'</t></is></c>'
-                .'<c r="I'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($jamSabtu).'</t></is></c>'
-                .'<c r="J'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($jamMinggu).'</t></is></c>'
-                .'<c r="K'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($alamat).'</t></is></c>'
-                .'<c r="L'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($kelurahan).'</t></is></c>'
-                .'<c r="M'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($kecamatan).'</t></is></c>'
-                .'<c r="N'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($posCode).'</t></is></c>'
-                .'<c r="O'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($latitude).'</t></is></c>'
-                .'<c r="P'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($longitude).'</t></is></c>'
-                .'<c r="Q'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($linkGmaps).'</t></is></c>'
+                .'<c r="E'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($typeDealer).'</t></is></c>'
+                .'<c r="F'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($starRate).'</t></is></c>'
+                .'<c r="G'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($totalReview).'</t></is></c>'
+                .'<c r="H'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($noTelp).'</t></is></c>'
+                .'<c r="I'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($jamWeekday).'</t></is></c>'
+                .'<c r="J'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($jamSabtu).'</t></is></c>'
+                .'<c r="K'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($jamMinggu).'</t></is></c>'
+                .'<c r="L'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($alamat).'</t></is></c>'
+                .'<c r="M'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($kelurahan).'</t></is></c>'
+                .'<c r="N'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($kecamatan).'</t></is></c>'
+                .'<c r="O'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($posCode).'</t></is></c>'
+                .'<c r="P'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($latitude).'</t></is></c>'
+                .'<c r="Q'.$rowNum.'" t="inlineStr" s="2"><is><t>'.$this->escapeXmlString($longitude).'</t></is></c>'
+                .'<c r="R'.$rowNum.'" t="inlineStr" s="3"><is><t>'.$this->escapeXmlString($linkGmaps).'</t></is></c>'
                 .'</row>';
 
             $rowNum++;
@@ -868,6 +894,7 @@ class DealerExcelService
             'KODE DEALER',
             'NAMA DEALER',
             'NAMA DEALER DI GBP',
+            'TYPE DEALER',
             'STAR RATE',
             'TOTAL REVIEW',
             'NO TELP SHOWROOM',
@@ -892,6 +919,7 @@ class DealerExcelService
                 (string) ($dealer->kode_dealer ?? ''),
                 (string) ($dealer->nama_dealer ?? ''),
                 (string) ($dealer->nama_dealer_gbp ?? ''),
+                (string) ($dealer->type_dealer ?? ''),
                 $dealer->star_rate !== null ? number_format((float) $dealer->star_rate, 1) : '',
                 $dealer->total_review !== null ? (string) $dealer->total_review : '',
                 (string) ($dealer->no_telp_showroom ?? ''),

@@ -23,6 +23,7 @@ import {
     Pagination as AntPagination,
     Segmented as AntSegmented,
     Statistic as AntStatistic,
+    Tag as AntTag,
 } from 'antd';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,11 +36,17 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { dashboard } from '@/routes';
+import {
+    TypeDealerFilterSelect,
+    matchesTypeDealerSelection,
+    useTypeDealerFilter,
+} from '@/components/dashboard/type-dealer-filter';
 
 export interface MonitoringFeedbackItem {
     id: number;
     kode_dealer: string;
     nama_dealer: string;
+    type_dealer?: string | null;
     gmb_score: number | null;
     rating_1_3: number;
     rating_4_5: number;
@@ -77,6 +84,8 @@ interface MonitoringFeedbackProps {
     prevEndDate?: string | null;
     activeRangeLabel?: string | null;
     selectedDealerId?: string;
+    availableTypeDealers?: string[];
+    selectedTypeDealers?: string[];
 }
 
 type SortKey = keyof MonitoringFeedbackItem;
@@ -217,6 +226,8 @@ export function MonitoringFeedback({
     prevEndDate,
     activeRangeLabel,
     selectedDealerId = '',
+    availableTypeDealers = [],
+    selectedTypeDealers = [],
 }: MonitoringFeedbackProps) {
     const [search, setSearch] = React.useState('');
     const [viewMode, setViewMode] = React.useState<'table' | 'chart'>('table');
@@ -224,6 +235,18 @@ export function MonitoringFeedback({
     const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('desc');
     const [pageSize, setPageSize] = React.useState<number | 'all'>('all');
     const [currentPage, setCurrentPage] = React.useState(1);
+
+    const {
+        typeDealerFilter,
+        typeDealerOptions,
+        handleTypeDealerChange,
+        buildNavigationParams,
+    } = useTypeDealerFilter(
+        dealers,
+        availableTypeDealers,
+        selectedTypeDealers,
+        () => setCurrentPage(1),
+    );
 
     // Date range popover state
     const [isDatePickerOpen, setIsDatePickerOpen] = React.useState(false);
@@ -262,26 +285,26 @@ export function MonitoringFeedback({
         end_date?: string | null;
         month?: string | null;
     }) => {
-        const currentParams = new URLSearchParams(window.location.search);
+        const nextParams = buildNavigationParams();
 
         if (params.month) {
-            currentParams.set('month', params.month);
-            currentParams.delete('start_date');
-            currentParams.delete('end_date');
+            nextParams.month = params.month;
+            delete nextParams.start_date;
+            delete nextParams.end_date;
         } else if (params.start_date && params.end_date) {
-            currentParams.set('start_date', params.start_date);
-            currentParams.set('end_date', params.end_date);
-            currentParams.delete('month');
+            nextParams.start_date = params.start_date;
+            nextParams.end_date = params.end_date;
+            delete nextParams.month;
         } else {
-            currentParams.delete('start_date');
-            currentParams.delete('end_date');
-            currentParams.delete('month');
+            delete nextParams.start_date;
+            delete nextParams.end_date;
+            delete nextParams.month;
         }
 
         setIsDatePickerOpen(false);
         router.get(
             window.location.pathname,
-            Object.fromEntries(currentParams.entries()),
+            nextParams,
             { preserveState: true, preserveScroll: true }
         );
     };
@@ -346,13 +369,78 @@ export function MonitoringFeedback({
 
     const filteredDealers = React.useMemo(() => {
         const query = search.trim().toLowerCase();
-        if (!query) return dealers;
-        return dealers.filter(
-            (d) =>
+        const selectedSet = new Set(typeDealerFilter);
+
+        return dealers.filter((d) => {
+            if (!matchesTypeDealerSelection(d.type_dealer, selectedSet)) {
+                return false;
+            }
+
+            if (!query) return true;
+            return (
                 d.nama_dealer.toLowerCase().includes(query) ||
-                d.kode_dealer.toLowerCase().includes(query)
-        );
-    }, [dealers, search]);
+                d.kode_dealer.toLowerCase().includes(query) ||
+                (d.type_dealer || '').toLowerCase().includes(query)
+            );
+        });
+    }, [dealers, search, typeDealerFilter]);
+
+    const effectiveSummary = React.useMemo<MonitoringFeedbackSummary | null>(() => {
+        if (!summary) return null;
+        if (typeDealerFilter.length === 0 && search.trim() === '') {
+            return summary;
+        }
+
+        const totRating13 = filteredDealers.reduce((acc, d) => acc + d.rating_1_3, 0);
+        const totRating45 = filteredDealers.reduce((acc, d) => acc + d.rating_4_5, 0);
+        const totFeedbackDone = filteredDealers.reduce((acc, d) => acc + d.feedback_done, 0);
+        const totNotYetFeedback = filteredDealers.reduce((acc, d) => acc + d.not_yet_feedback, 0);
+        const totM = filteredDealers.reduce((acc, d) => acc + d.jumlah_review_m, 0);
+        const totM1 = filteredDealers.reduce((acc, d) => acc + d.jumlah_review_m1, 0);
+        const totAch = totM > 0 ? Math.round((totFeedbackDone / totM) * 10000) / 100 : 0.0;
+
+        let totGrowth: number | null = null;
+        if (activeMonth !== 'all') {
+            if (totM1 > 0) {
+                totGrowth = Math.round(((totM - totM1) / totM1) * 100);
+            } else if (totM1 === 0 && totM > 0) {
+                totGrowth = 100;
+            }
+        }
+
+        const validScores = filteredDealers
+            .map((d) => d.gmb_score)
+            .filter((s): s is number => s !== null && s !== undefined);
+        const avgGmbScore =
+            validScores.length > 0
+                ? Math.round(
+                      (validScores.reduce((a, b) => a + b, 0) / validScores.length) * 100,
+                  ) / 100
+                : null;
+
+        const validLts = filteredDealers
+            .map((d) => d.lt_day)
+            .filter((l): l is number => l !== null && l !== undefined);
+        const avgLt =
+            validLts.length > 0
+                ? Math.round(
+                      (validLts.reduce((a, b) => a + b, 0) / validLts.length) * 10,
+                  ) / 10
+                : null;
+
+        return {
+            gmb_score: avgGmbScore,
+            rating_1_3: totRating13,
+            rating_4_5: totRating45,
+            feedback_done: totFeedbackDone,
+            not_yet_feedback: totNotYetFeedback,
+            ach_feedback: totAch,
+            lt_day: avgLt,
+            jumlah_review_m: totM,
+            jumlah_review_m1: totM1,
+            growth_review: totGrowth,
+        };
+    }, [summary, filteredDealers, typeDealerFilter, search, activeMonth]);
 
     const sortedDealers = React.useMemo(() => {
         const list = [...filteredDealers];
@@ -360,13 +448,17 @@ export function MonitoringFeedback({
             const valA = a[sortKey];
             const valB = b[sortKey];
 
-            if (valA === null || valA === undefined) return 1;
-            if (valB === null || valB === undefined) return -1;
+            const isEmptyA = valA === null || valA === undefined || valA === '';
+            const isEmptyB = valB === null || valB === undefined || valB === '';
+            if (isEmptyA && isEmptyB) return a.nama_dealer.localeCompare(b.nama_dealer);
+            if (isEmptyA) return 1;
+            if (isEmptyB) return -1;
 
             if (typeof valA === 'string' && typeof valB === 'string') {
-                return sortDir === 'asc'
+                const cmp = sortDir === 'asc'
                     ? valA.localeCompare(valB)
                     : valB.localeCompare(valA);
+                return cmp !== 0 ? cmp : a.nama_dealer.localeCompare(b.nama_dealer);
             }
 
             const numA = Number(valA);
@@ -392,9 +484,21 @@ export function MonitoringFeedback({
             ? 1
             : Math.ceil(sortedDealers.length / pageSize) || 1;
 
+    const chartMaxVal = React.useMemo(
+        () =>
+            Math.max(
+                ...sortedDealers.map((x) =>
+                    Math.max(x.jumlah_review_m, x.jumlah_review_m1),
+                ),
+                1,
+            ),
+        [sortedDealers],
+    );
+
     const handleExportCsv = () => {
         const headers = [
             'NAMA DEALER',
+            'TYPE DEALER',
             'GMB SCORE',
             'RATING 1-3',
             'RATING 4-5',
@@ -417,6 +521,7 @@ export function MonitoringFeedback({
 
         const rows = sortedDealers.map((d) => [
             `"${d.nama_dealer.replace(/"/g, '""')}"`,
+            d.type_dealer ? `"${d.type_dealer.replace(/"/g, '""')}"` : '',
             d.gmb_score !== null ? d.gmb_score.toFixed(2) : '',
             d.rating_1_3,
             d.rating_4_5,
@@ -431,19 +536,20 @@ export function MonitoringFeedback({
             d.growth_review !== null ? `${d.growth_review}%` : '',
         ]);
 
-        if (summary) {
+        if (effectiveSummary) {
             rows.push([
                 '"TOTAL"',
-                summary.gmb_score !== null ? summary.gmb_score.toFixed(2) : '',
-                summary.rating_1_3,
-                summary.rating_4_5,
-                summary.feedback_done,
-                summary.not_yet_feedback,
-                `${summary.ach_feedback.toFixed(2)}%`,
-                summary.lt_day !== null ? summary.lt_day : '',
-                summary.jumlah_review_m,
-                summary.jumlah_review_m1,
-                summary.growth_review !== null ? `${summary.growth_review}%` : '',
+                '',
+                effectiveSummary.gmb_score !== null ? effectiveSummary.gmb_score.toFixed(2) : '',
+                effectiveSummary.rating_1_3,
+                effectiveSummary.rating_4_5,
+                effectiveSummary.feedback_done,
+                effectiveSummary.not_yet_feedback,
+                `${effectiveSummary.ach_feedback.toFixed(2)}%`,
+                effectiveSummary.lt_day !== null ? effectiveSummary.lt_day : '',
+                effectiveSummary.jumlah_review_m,
+                effectiveSummary.jumlah_review_m1,
+                effectiveSummary.growth_review !== null ? `${effectiveSummary.growth_review}%` : '',
             ]);
         }
 
@@ -677,6 +783,13 @@ export function MonitoringFeedback({
                         )}
                     </div>
 
+                    {/* Filter Type Dealer */}
+                    <TypeDealerFilterSelect
+                        value={typeDealerFilter}
+                        options={typeDealerOptions}
+                        onChange={handleTypeDealerChange}
+                    />
+
                     {/* Search */}
                     <AntInput
                         placeholder="Cari dealer..."
@@ -738,6 +851,12 @@ export function MonitoringFeedback({
                                         className="bg-slate-900 px-3.5 py-2.5 text-left cursor-pointer hover:bg-slate-800 transition-colors border-r border-slate-700/60 min-w-[200px] sticky left-0 z-20"
                                     >
                                         NAMA DEALER {renderSortArrow('nama_dealer')}
+                                    </th>
+                                    <th
+                                        onClick={() => handleSort('type_dealer')}
+                                        className="bg-slate-900 px-3 py-2.5 text-center cursor-pointer hover:bg-slate-800 transition-colors border-r border-slate-700/60"
+                                    >
+                                        TYPE DEALER {renderSortArrow('type_dealer')}
                                     </th>
                                     <th
                                         onClick={() => handleSort('gmb_score')}
@@ -804,7 +923,7 @@ export function MonitoringFeedback({
                             <tbody>
                                 {paginatedDealers.length === 0 ? (
                                     <tr>
-                                        <td colSpan={11} className="text-center py-8 text-muted-foreground text-xs">
+                                        <td colSpan={12} className="text-center py-8 text-muted-foreground text-xs">
                                             Tidak ada data dealer yang sesuai kriteria pencarian.
                                         </td>
                                     </tr>
@@ -821,6 +940,17 @@ export function MonitoringFeedback({
                                                 {/* Nama Dealer */}
                                                 <td className="px-3.5 py-1.5 text-left font-semibold text-foreground truncate max-w-[240px] sticky left-0 z-10 bg-inherit border-r border-border/30">
                                                     {d.nama_dealer}
+                                                </td>
+
+                                                {/* Type Dealer */}
+                                                <td className="px-3 py-1.5 text-center border-r border-border/30">
+                                                    {d.type_dealer ? (
+                                                        <AntTag color="blue" className="m-0 text-[10px] font-medium">
+                                                            {d.type_dealer}
+                                                        </AntTag>
+                                                    ) : (
+                                                        <span className="text-muted-foreground italic">-</span>
+                                                    )}
                                                 </td>
 
                                                 {/* GMB Score */}
@@ -887,42 +1017,45 @@ export function MonitoringFeedback({
                             </tbody>
 
                             {/* Total Row */}
-                            {summary && (
+                            {effectiveSummary && (
                                 <tfoot>
                                     <tr className="bg-slate-950 text-white font-bold text-center border-t-2 border-slate-700">
                                         <td className="px-3.5 py-2 text-left sticky left-0 z-10 bg-slate-950 border-r border-slate-800">
                                             Total
                                         </td>
+                                        <td className="px-3 py-2 text-center border-r border-slate-800 text-slate-400">
+                                            -
+                                        </td>
                                         <td className="bg-[#0e4d64] text-white px-3 py-2 text-center border-r border-slate-800">
-                                            <GmbScoreBadge score={summary.gmb_score} />
+                                            <GmbScoreBadge score={effectiveSummary.gmb_score} />
                                         </td>
                                         <td className="px-2.5 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.rating_1_3}
+                                            {effectiveSummary.rating_1_3}
                                         </td>
                                         <td className="px-2.5 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.rating_4_5}
+                                            {effectiveSummary.rating_4_5}
                                         </td>
                                         <td className="px-2.5 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.feedback_done}
+                                            {effectiveSummary.feedback_done}
                                         </td>
                                         <td className="px-2.5 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.not_yet_feedback}
+                                            {effectiveSummary.not_yet_feedback}
                                         </td>
                                         <td className="bg-[#0284c7] text-white px-3 py-2 text-center font-mono border-r border-blue-600">
-                                            {summary.ach_feedback.toFixed(2)}%
+                                            {effectiveSummary.ach_feedback.toFixed(2)}%
                                         </td>
                                         <td className="bg-[#1d4ed8] text-white px-2.5 py-2 text-center font-mono border-r border-blue-800">
-                                            {summary.lt_day !== null ? summary.lt_day : '-'}
+                                            {effectiveSummary.lt_day !== null ? effectiveSummary.lt_day : '-'}
                                         </td>
                                         <td className="px-3 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.jumlah_review_m}
+                                            {effectiveSummary.jumlah_review_m}
                                         </td>
                                         <td className="px-3 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.jumlah_review_m1}
+                                            {effectiveSummary.jumlah_review_m1}
                                         </td>
                                         <td className="bg-[#0d9488] text-white px-3 py-2 text-center font-mono">
-                                            {summary.growth_review !== null
-                                                ? `${summary.growth_review > 0 ? '+' : ''}${summary.growth_review}%`
+                                            {effectiveSummary.growth_review !== null
+                                                ? `${effectiveSummary.growth_review > 0 ? '+' : ''}${effectiveSummary.growth_review}%`
                                                 : '-'}
                                         </td>
                                     </tr>
@@ -938,14 +1071,14 @@ export function MonitoringFeedback({
                             <AntCard size="small" className="border shadow-2xs">
                                 <AntStatistic
                                     title={<span className="text-xs text-muted-foreground font-medium">Pertumbuhan Ulasan (M vs M-1)</span>}
-                                    value={summary?.growth_review !== null ? `${(summary?.growth_review ?? 0) > 0 ? '+' : ''}${summary?.growth_review}%` : '-'}
+                                    value={effectiveSummary?.growth_review !== null && effectiveSummary?.growth_review !== undefined ? `${effectiveSummary.growth_review > 0 ? '+' : ''}${effectiveSummary.growth_review}%` : '-'}
                                     valueStyle={{
-                                        color: (summary?.growth_review ?? 0) >= 0 ? '#10b981' : '#f43f5e',
+                                        color: (effectiveSummary?.growth_review ?? 0) >= 0 ? '#10b981' : '#f43f5e',
                                         fontWeight: 700,
                                     }}
                                 />
                                 <div className="text-[11px] text-muted-foreground mt-1">
-                                    {summary?.jumlah_review_m ?? 0} ulasan (M) vs {summary?.jumlah_review_m1 ?? 0} ulasan (M-1)
+                                    {effectiveSummary?.jumlah_review_m ?? 0} ulasan (M) vs {effectiveSummary?.jumlah_review_m1 ?? 0} ulasan (M-1)
                                 </div>
                             </AntCard>
 
@@ -953,11 +1086,11 @@ export function MonitoringFeedback({
                             <AntCard size="small" className="border shadow-2xs">
                                 <AntStatistic
                                     title={<span className="text-xs text-muted-foreground font-medium">Pencapaian Respons Ulasan (%ACH)</span>}
-                                    value={`${summary?.ach_feedback ? summary.ach_feedback.toFixed(2) : 0}%`}
+                                    value={`${effectiveSummary?.ach_feedback ? effectiveSummary.ach_feedback.toFixed(2) : 0}%`}
                                     valueStyle={{ color: '#2563eb', fontWeight: 700 }}
                                 />
                                 <div className="text-[11px] text-muted-foreground mt-1">
-                                    {summary?.feedback_done ?? 0} terjawab | {summary?.not_yet_feedback ?? 0} menunggu respon
+                                    {effectiveSummary?.feedback_done ?? 0} terjawab | {effectiveSummary?.not_yet_feedback ?? 0} menunggu respon
                                 </div>
                             </AntCard>
 
@@ -965,12 +1098,12 @@ export function MonitoringFeedback({
                             <AntCard size="small" className="border shadow-2xs">
                                 <AntStatistic
                                     title={<span className="text-xs text-muted-foreground font-medium">Rata-rata Skor GMB</span>}
-                                    value={summary?.gmb_score?.toFixed(2) ?? '-'}
+                                    value={effectiveSummary?.gmb_score?.toFixed(2) ?? '-'}
                                     prefix={<span className="text-amber-500 mr-1">★</span>}
                                     valueStyle={{ color: '#f59e0b', fontWeight: 700 }}
                                 />
                                 <div className="text-[11px] text-muted-foreground mt-1">
-                                    Bintang 4-5: {summary?.rating_4_5 ?? 0} | Kritis (1-3★): {summary?.rating_1_3 ?? 0}
+                                    Bintang 4-5: {effectiveSummary?.rating_4_5 ?? 0} | Kritis (1-3★): {effectiveSummary?.rating_1_3 ?? 0}
                                 </div>
                             </AntCard>
                         </div>
@@ -982,12 +1115,8 @@ export function MonitoringFeedback({
                             </h4>
                             <div className="space-y-2.5">
                                 {sortedDealers.slice(0, 10).map((d) => {
-                                    const maxVal = Math.max(
-                                        ...dealers.map((x) => Math.max(x.jumlah_review_m, x.jumlah_review_m1)),
-                                        1
-                                    );
-                                    const pctM = Math.round((d.jumlah_review_m / maxVal) * 100);
-                                    const pctM1 = Math.round((d.jumlah_review_m1 / maxVal) * 100);
+                                    const pctM = Math.round((d.jumlah_review_m / chartMaxVal) * 100);
+                                    const pctM1 = Math.round((d.jumlah_review_m1 / chartMaxVal) * 100);
 
                                     return (
                                         <div
@@ -995,10 +1124,15 @@ export function MonitoringFeedback({
                                             className="rounded-lg border p-3 bg-card hover:bg-muted/30 transition-colors space-y-2"
                                         >
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex flex-wrap items-center gap-2">
                                                     <span className="font-semibold text-foreground">
                                                         {d.nama_dealer}
                                                     </span>
+                                                    {d.type_dealer && (
+                                                        <AntTag color="blue" className="m-0 text-[10px] font-medium">
+                                                            {d.type_dealer}
+                                                        </AntTag>
+                                                    )}
                                                     <GmbScoreBadge score={d.gmb_score} />
                                                 </div>
                                                 <div className="flex items-center gap-3 text-xs">

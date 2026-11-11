@@ -103,6 +103,7 @@ export default function DealersIndex({
         kode_dealer: '',
         nama_dealer: '',
         nama_dealer_gbp: '',
+        type_dealer: '',
         link_google_maps: '',
         latitude: '',
         longitude: '',
@@ -122,6 +123,7 @@ export default function DealersIndex({
         kode_dealer: '',
         nama_dealer: '',
         nama_dealer_gbp: '',
+        type_dealer: '',
         link_google_maps: '',
         latitude: '',
         longitude: '',
@@ -248,6 +250,7 @@ export default function DealersIndex({
             kode_dealer: '',
             nama_dealer: '',
             nama_dealer_gbp: '',
+            type_dealer: '',
             link_google_maps: '',
             latitude: '',
             longitude: '',
@@ -282,6 +285,7 @@ export default function DealersIndex({
             kode_dealer: dealer.kode_dealer,
             nama_dealer: dealer.nama_dealer,
             nama_dealer_gbp: dealer.nama_dealer_gbp || '',
+            type_dealer: dealer.type_dealer || '',
             link_google_maps: dealer.link_google_maps || '',
             latitude:
                 dealer.latitude !== null && dealer.latitude !== undefined
@@ -630,7 +634,7 @@ export default function DealersIndex({
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="max-w-md flex-1">
                         <AntInput.Search
-                            placeholder="Cari kode, nama, alamat, kelurahan, atau no telp..."
+                            placeholder="Cari kode, nama, type dealer, alamat, kelurahan, atau no telp..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             onSearch={() => {
@@ -672,6 +676,9 @@ export default function DealersIndex({
                                     </th>
                                     <th className="px-3 py-3.5 whitespace-nowrap">
                                         Nama Dealer di GBP
+                                    </th>
+                                    <th className="px-3 py-3.5 whitespace-nowrap">
+                                        Type Dealer
                                     </th>
                                     <th className="px-3 py-3.5 whitespace-nowrap">
                                         Star Rate
@@ -721,7 +728,7 @@ export default function DealersIndex({
                                 {dealers.data.length === 0 ? (
                                     <tr>
                                         <td
-                                            colSpan={18}
+                                            colSpan={19}
                                             className="py-12 text-center text-muted-foreground"
                                         >
                                             <div className="flex flex-col items-center justify-center gap-2">
@@ -774,6 +781,17 @@ export default function DealersIndex({
                                                 </td>
                                                 <td className="px-3 py-3.5 font-medium whitespace-nowrap text-foreground">
                                                     {dealer.nama_dealer_gbp || (
+                                                        <span className="text-xs text-muted-foreground italic">
+                                                            -
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-3.5 whitespace-nowrap text-foreground">
+                                                    {dealer.type_dealer ? (
+                                                        <AntTag color="blue" className="font-medium">
+                                                            {dealer.type_dealer}
+                                                        </AntTag>
+                                                    ) : (
                                                         <span className="text-xs text-muted-foreground italic">
                                                             -
                                                         </span>
@@ -1067,7 +1085,7 @@ export default function DealersIndex({
                         className="space-y-4 py-2"
                     >
                         {/* Section 1: Identitas Dealer */}
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div className="space-y-2">
                                 <Label htmlFor="create_kode_dealer">
                                     Kode Dealer{' '}
@@ -1148,6 +1166,36 @@ export default function DealersIndex({
                                 />
                                 <InputError
                                     message={createForm.errors.nama_dealer_gbp}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="create_type_dealer">
+                                        Type Dealer
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="create_type_dealer"
+                                    placeholder="Contoh: H123 / H23 / Regular"
+                                    value={createForm.data.type_dealer}
+                                    onChange={(e) =>
+                                        createForm.setData(
+                                            'type_dealer',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        createForm.errors.type_dealer
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={createForm.errors.type_dealer}
                                 />
                             </div>
                         </div>
@@ -1598,7 +1646,7 @@ export default function DealersIndex({
                         className="space-y-4 py-2"
                     >
                         {/* Section 1: Identitas Dealer */}
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div className="space-y-2">
                                 <Label htmlFor="edit_kode_dealer">
                                     Kode Dealer{' '}
@@ -1682,6 +1730,36 @@ export default function DealersIndex({
                                 />
                                 <InputError
                                     message={editForm.errors.nama_dealer_gbp}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="edit_type_dealer">
+                                        Type Dealer
+                                    </Label>
+                                    <span className="text-[11px] text-muted-foreground italic">
+                                        Opsional
+                                    </span>
+                                </div>
+                                <Input
+                                    id="edit_type_dealer"
+                                    placeholder="Contoh: H123 / H23 / Regular"
+                                    value={editForm.data.type_dealer}
+                                    onChange={(e) =>
+                                        editForm.setData(
+                                            'type_dealer',
+                                            e.target.value,
+                                        )
+                                    }
+                                    className={
+                                        editForm.errors.type_dealer
+                                            ? 'border-destructive'
+                                            : ''
+                                    }
+                                />
+                                <InputError
+                                    message={editForm.errors.type_dealer}
                                 />
                             </div>
                         </div>
@@ -2299,6 +2377,16 @@ export default function DealersIndex({
                                         Dealer Nusantara Jakarta
                                     </code>
                                     ).
+                                </li>
+                                <li>
+                                    <strong className="text-foreground">
+                                        Type Dealer
+                                    </strong>
+                                    : Opsional, tipe atau kategori dealer (contoh:{' '}
+                                    <code className="rounded bg-muted px-1">
+                                        H123
+                                    </code>
+                                    , dapat dikosongkan).
                                 </li>
                                 <li>
                                     <strong className="text-foreground">

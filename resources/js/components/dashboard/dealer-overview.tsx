@@ -35,11 +35,17 @@ import {
     CardTitle,
 } from '@/components/ui/card';
 import { dashboard } from '@/routes';
+import {
+    TypeDealerFilterSelect,
+    matchesTypeDealerSelection,
+    useTypeDealerFilter,
+} from '@/components/dashboard/type-dealer-filter';
 
 export interface DealerOverviewItem {
     id: number;
     kode_dealer: string;
     nama_dealer: string;
+    type_dealer?: string | null;
     total_review_all: number;
     review_monthly: number;
     gmb_score: number | null;
@@ -79,6 +85,8 @@ interface DealerOverviewProps {
     availableMonths: string[];
     activeMonth: string | null;
     selectedDealerId?: string;
+    availableTypeDealers?: string[];
+    selectedTypeDealers?: string[];
 }
 
 type SortKey = keyof DealerOverviewItem;
@@ -173,6 +181,8 @@ export function DealerOverview({
     availableMonths = [],
     activeMonth,
     selectedDealerId = '',
+    availableTypeDealers = [],
+    selectedTypeDealers = [],
 }: DealerOverviewProps) {
     const [search, setSearch] = React.useState('');
     const [viewMode, setViewMode] = React.useState<'table' | 'chart'>('table');
@@ -181,17 +191,30 @@ export function DealerOverview({
     const [pageSize, setPageSize] = React.useState<number | 'all'>('all');
     const [currentPage, setCurrentPage] = React.useState(1);
 
-    const handleMonthChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const nextMonth = e.target.value;
-        const currentParams = new URLSearchParams(window.location.search);
-        if (nextMonth) {
-            currentParams.set('month', nextMonth);
+    const {
+        typeDealerFilter,
+        typeDealerOptions,
+        handleTypeDealerChange,
+        buildNavigationParams,
+    } = useTypeDealerFilter(
+        dealers,
+        availableTypeDealers,
+        selectedTypeDealers,
+        () => setCurrentPage(1),
+    );
+
+    const handleMonthChange = (nextMonth: string) => {
+        const nextParams = buildNavigationParams();
+        if (nextMonth && nextMonth !== 'all') {
+            nextParams.month = nextMonth;
+        } else if (nextMonth === 'all') {
+            nextParams.month = 'all';
         } else {
-            currentParams.delete('month');
+            delete nextParams.month;
         }
         router.get(
             window.location.pathname,
-            Object.fromEntries(currentParams.entries()),
+            nextParams,
             { preserveState: true, preserveScroll: true }
         );
     };
@@ -207,13 +230,100 @@ export function DealerOverview({
 
     const filteredDealers = React.useMemo(() => {
         const query = search.trim().toLowerCase();
-        if (!query) return dealers;
-        return dealers.filter(
-            (d) =>
+        const selectedSet = new Set(typeDealerFilter);
+
+        return dealers.filter((d) => {
+            if (!matchesTypeDealerSelection(d.type_dealer, selectedSet)) {
+                return false;
+            }
+
+            if (!query) return true;
+            return (
                 d.nama_dealer.toLowerCase().includes(query) ||
-                d.kode_dealer.toLowerCase().includes(query)
+                d.kode_dealer.toLowerCase().includes(query) ||
+                (d.type_dealer || '').toLowerCase().includes(query)
+            );
+        });
+    }, [dealers, search, typeDealerFilter]);
+
+    const effectiveSummary = React.useMemo<DealerOverviewSummary | null>(() => {
+        if (!summary) return null;
+        if (typeDealerFilter.length === 0 && search.trim() === '') {
+            return summary;
+        }
+
+        const totalReviewAll = filteredDealers.reduce(
+            (acc, d) => acc + d.total_review_all,
+            0,
         );
-    }, [dealers, search]);
+        const reviewMonthly = filteredDealers.reduce(
+            (acc, d) => acc + d.review_monthly,
+            0,
+        );
+        const validScores = filteredDealers
+            .map((d) => d.gmb_score)
+            .filter((s): s is number => s !== null && s !== undefined);
+        const avgGmb =
+            validScores.length > 0
+                ? Math.round(
+                      (validScores.reduce((a, b) => a + b, 0) /
+                          validScores.length) *
+                          100,
+                  ) / 100
+                : null;
+        const r1 = filteredDealers.reduce((acc, d) => acc + d.rating_1, 0);
+        const r2 = filteredDealers.reduce((acc, d) => acc + d.rating_2, 0);
+        const r3 = filteredDealers.reduce((acc, d) => acc + d.rating_3, 0);
+        const r4 = filteredDealers.reduce((acc, d) => acc + d.rating_4, 0);
+        const r5 = filteredDealers.reduce((acc, d) => acc + d.rating_5, 0);
+        const jmlFeedback = filteredDealers.reduce(
+            (acc, d) => acc + d.jumlah_feedback,
+            0,
+        );
+        const belumFeedback = filteredDealers.reduce(
+            (acc, d) => acc + d.belum_feedback,
+            0,
+        );
+        const cont13 =
+            reviewMonthly > 0
+                ? Math.round(((r1 + r2 + r3) / reviewMonthly) * 10000) / 100
+                : 0;
+        const cont45 =
+            reviewMonthly > 0
+                ? Math.round(((r4 + r5) / reviewMonthly) * 10000) / 100
+                : 0;
+        const achFeedback =
+            reviewMonthly > 0
+                ? Math.round((jmlFeedback / reviewMonthly) * 10000) / 100
+                : 0;
+        const validLts = filteredDealers
+            .map((d) => d.lt_days)
+            .filter((l): l is number => l !== null && l !== undefined);
+        const avgLt =
+            validLts.length > 0
+                ? Math.round(
+                      (validLts.reduce((a, b) => a + b, 0) / validLts.length) *
+                          10,
+                  ) / 10
+                : null;
+
+        return {
+            total_review_all: totalReviewAll,
+            review_monthly: reviewMonthly,
+            gmb_score: avgGmb,
+            rating_1: r1,
+            rating_2: r2,
+            rating_3: r3,
+            rating_4: r4,
+            rating_5: r5,
+            cont_rating_1_3: cont13,
+            cont_rating_4_5: cont45,
+            jumlah_feedback: jmlFeedback,
+            belum_feedback: belumFeedback,
+            ach_feedback: achFeedback,
+            lt_days: avgLt,
+        };
+    }, [summary, filteredDealers, typeDealerFilter, search]);
 
     const sortedDealers = React.useMemo(() => {
         const list = [...filteredDealers];
@@ -221,8 +331,14 @@ export function DealerOverview({
             const valA = a[sortKey];
             const valB = b[sortKey];
 
-            if (valA === null || valA === undefined) return 1;
-            if (valB === null || valB === undefined) return -1;
+            const emptyA = valA === null || valA === undefined || valA === '';
+            const emptyB = valB === null || valB === undefined || valB === '';
+
+            if (emptyA && emptyB) {
+                return a.nama_dealer.localeCompare(b.nama_dealer);
+            }
+            if (emptyA) return 1;
+            if (emptyB) return -1;
 
             if (typeof valA === 'string' && typeof valB === 'string') {
                 return sortDir === 'asc'
@@ -257,6 +373,7 @@ export function DealerOverview({
         const headers = [
             'DEALER CODE',
             'NAMA DEALER',
+            'TYPE DEALER',
             'J. REVIEW ALL',
             'REVIEW MONTHLY',
             'GMB SCORE',
@@ -276,6 +393,7 @@ export function DealerOverview({
         const rows = sortedDealers.map((d) => [
             `"${d.kode_dealer}"`,
             `"${d.nama_dealer.replace(/"/g, '""')}"`,
+            d.type_dealer ? `"${d.type_dealer.replace(/"/g, '""')}"` : '',
             d.total_review_all,
             d.review_monthly,
             d.gmb_score !== null ? d.gmb_score.toFixed(2) : '',
@@ -294,24 +412,25 @@ export function DealerOverview({
             d.lt_days !== null ? d.lt_days : '',
         ]);
 
-        if (summary) {
+        if (effectiveSummary) {
             rows.push([
                 '"TOTAL"',
                 '""',
-                summary.total_review_all,
-                summary.review_monthly,
-                summary.gmb_score !== null ? summary.gmb_score.toFixed(2) : '',
-                summary.rating_1,
-                summary.rating_2,
-                summary.rating_3,
-                summary.rating_4,
-                summary.rating_5,
-                `${summary.cont_rating_1_3.toFixed(2)}%`,
-                `${summary.cont_rating_4_5.toFixed(2)}%`,
-                summary.jumlah_feedback,
-                summary.belum_feedback,
-                `${summary.ach_feedback.toFixed(2)}%`,
-                summary.lt_days !== null ? summary.lt_days : '',
+                '',
+                effectiveSummary.total_review_all,
+                effectiveSummary.review_monthly,
+                effectiveSummary.gmb_score !== null ? effectiveSummary.gmb_score.toFixed(2) : '',
+                effectiveSummary.rating_1,
+                effectiveSummary.rating_2,
+                effectiveSummary.rating_3,
+                effectiveSummary.rating_4,
+                effectiveSummary.rating_5,
+                `${effectiveSummary.cont_rating_1_3.toFixed(2)}%`,
+                `${effectiveSummary.cont_rating_4_5.toFixed(2)}%`,
+                effectiveSummary.jumlah_feedback,
+                effectiveSummary.belum_feedback,
+                `${effectiveSummary.ach_feedback.toFixed(2)}%`,
+                effectiveSummary.lt_days !== null ? effectiveSummary.lt_days : '',
             ]);
         }
 
@@ -367,19 +486,7 @@ export function DealerOverview({
                     {availableMonths.length > 0 && (
                         <AntSelect
                             value={activeMonth ?? 'all'}
-                            onChange={(val) => {
-                                const currentParams = new URLSearchParams(window.location.search);
-                                if (val && val !== 'all') {
-                                    currentParams.set('month', val);
-                                } else {
-                                    currentParams.delete('month');
-                                }
-                                router.get(
-                                    window.location.pathname,
-                                    Object.fromEntries(currentParams.entries()),
-                                    { preserveState: true, preserveScroll: true }
-                                );
-                            }}
+                            onChange={(val) => handleMonthChange(val)}
                             className="w-36 sm:w-44"
                             options={[
                                 { value: 'all', label: 'All Tanggal' },
@@ -390,6 +497,13 @@ export function DealerOverview({
                             ]}
                         />
                     )}
+
+                    {/* Filter Type Dealer */}
+                    <TypeDealerFilterSelect
+                        value={typeDealerFilter}
+                        options={typeDealerOptions}
+                        onChange={handleTypeDealerChange}
+                    />
 
                     {/* Search */}
                     <AntInput
@@ -458,6 +572,12 @@ export function DealerOverview({
                                         className="bg-slate-900 px-3 py-2.5 text-left cursor-pointer hover:bg-slate-800 transition-colors border-r border-slate-700/60 min-w-[170px]"
                                     >
                                         NAMA DEALER {renderSortArrow('nama_dealer')}
+                                    </th>
+                                    <th
+                                        onClick={() => handleSort('type_dealer')}
+                                        className="bg-slate-900 px-2.5 py-2.5 text-center cursor-pointer hover:bg-slate-800 transition-colors border-r border-slate-700/60"
+                                    >
+                                        TYPE DEALER {renderSortArrow('type_dealer')}
                                     </th>
                                     <th
                                         onClick={() => handleSort('total_review_all')}
@@ -548,7 +668,7 @@ export function DealerOverview({
                             <tbody>
                                 {paginatedDealers.length === 0 ? (
                                     <tr>
-                                        <td colSpan={16} className="text-center py-8 text-muted-foreground text-xs">
+                                        <td colSpan={17} className="text-center py-8 text-muted-foreground text-xs">
                                             Tidak ada data dealer yang sesuai kriteria pencarian.
                                         </td>
                                     </tr>
@@ -570,6 +690,17 @@ export function DealerOverview({
                                                 {/* Nama Dealer */}
                                                 <td className="px-3 py-1.5 text-left font-semibold text-foreground truncate max-w-[220px] border-r border-border/30">
                                                     {d.nama_dealer}
+                                                </td>
+
+                                                {/* Type Dealer */}
+                                                <td className="px-2.5 py-1.5 text-center border-r border-border/30">
+                                                    {d.type_dealer ? (
+                                                        <AntTag color="blue" className="m-0 text-[10px] font-medium">
+                                                            {d.type_dealer}
+                                                        </AntTag>
+                                                    ) : (
+                                                        <span className="text-muted-foreground italic">-</span>
+                                                    )}
                                                 </td>
 
                                                 {/* J. Review All */}
@@ -644,56 +775,59 @@ export function DealerOverview({
                             </tbody>
 
                             {/* Total Row */}
-                            {summary && (
+                            {effectiveSummary && (
                                 <tfoot>
                                     <tr className="bg-slate-950 text-white font-bold text-center border-t-2 border-slate-700">
                                         <td className="px-3 py-2 text-left sticky left-0 z-10 bg-slate-950 border-r border-slate-800">
                                             Total
                                         </td>
                                         <td className="px-3 py-2 text-left text-muted-foreground text-[10px] border-r border-slate-800">
-                                            {dealers.length} Showroom
+                                            {filteredDealers.length} Showroom
+                                        </td>
+                                        <td className="px-2.5 py-2 text-center text-slate-400 border-r border-slate-800">
+                                            -
                                         </td>
                                         <td className="px-2.5 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.total_review_all.toLocaleString('id-ID')}
+                                            {effectiveSummary.total_review_all.toLocaleString('id-ID')}
                                         </td>
                                         <td className="px-2.5 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.review_monthly.toLocaleString('id-ID')}
+                                            {effectiveSummary.review_monthly.toLocaleString('id-ID')}
                                         </td>
                                         <td className="px-2.5 py-2 text-center border-r border-slate-800">
-                                            <GmbScoreBadge score={summary.gmb_score} />
+                                            <GmbScoreBadge score={effectiveSummary.gmb_score} />
                                         </td>
                                         <td className="px-2 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.rating_1}
+                                            {effectiveSummary.rating_1}
                                         </td>
                                         <td className="px-2 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.rating_2}
+                                            {effectiveSummary.rating_2}
                                         </td>
                                         <td className="px-2 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.rating_3}
+                                            {effectiveSummary.rating_3}
                                         </td>
                                         <td className="px-2 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.rating_4}
+                                            {effectiveSummary.rating_4}
                                         </td>
                                         <td className="px-2 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.rating_5}
+                                            {effectiveSummary.rating_5}
                                         </td>
                                         <td className="bg-rose-900 text-white px-2.5 py-2 text-center font-mono border-r border-rose-950">
-                                            {summary.cont_rating_1_3.toFixed(2)}%
+                                            {effectiveSummary.cont_rating_1_3.toFixed(2)}%
                                         </td>
                                         <td className="bg-emerald-900 text-white px-2.5 py-2 text-center font-mono border-r border-emerald-950">
-                                            {summary.cont_rating_4_5.toFixed(2)}%
+                                            {effectiveSummary.cont_rating_4_5.toFixed(2)}%
                                         </td>
                                         <td className="px-2 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.jumlah_feedback}
+                                            {effectiveSummary.jumlah_feedback}
                                         </td>
                                         <td className="px-2 py-2 text-center font-mono border-r border-slate-800">
-                                            {summary.belum_feedback}
+                                            {effectiveSummary.belum_feedback}
                                         </td>
                                         <td className="bg-blue-600 text-white px-2.5 py-2 text-center font-mono border-r border-blue-700">
-                                            {summary.ach_feedback.toFixed(2)}%
+                                            {effectiveSummary.ach_feedback.toFixed(2)}%
                                         </td>
                                         <td className="bg-amber-700 text-white px-2.5 py-2 text-center font-mono">
-                                            {summary.lt_days !== null ? summary.lt_days : '-'}
+                                            {effectiveSummary.lt_days !== null ? effectiveSummary.lt_days : '-'}
                                         </td>
                                     </tr>
                                 </tfoot>
@@ -708,11 +842,11 @@ export function DealerOverview({
                             <AntCard size="small" className="rounded-xl shadow-2xs border">
                                 <AntStatistic
                                     title={activeMonth === 'all' ? 'Total Ulasan (All Tanggal)' : 'Total Ulasan Bulan Ini'}
-                                    value={summary?.review_monthly ?? 0}
+                                    value={effectiveSummary?.review_monthly ?? 0}
                                     formatter={(val) => Number(val).toLocaleString('id-ID')}
                                 />
                                 <div className="text-[11px] text-muted-foreground mt-1">
-                                    Dari total {summary?.total_review_all.toLocaleString('id-ID') ?? 0} ulasan keseluruhan
+                                    Dari total {effectiveSummary?.total_review_all.toLocaleString('id-ID') ?? 0} ulasan keseluruhan
                                 </div>
                             </AntCard>
 
@@ -720,13 +854,13 @@ export function DealerOverview({
                             <AntCard size="small" className="rounded-xl shadow-2xs border">
                                 <AntStatistic
                                     title="Tingkat Pencapaian Feedback"
-                                    value={summary?.ach_feedback ?? 0}
+                                    value={effectiveSummary?.ach_feedback ?? 0}
                                     precision={1}
                                     suffix="%"
                                     valueStyle={{ color: '#1677ff' }}
                                 />
                                 <div className="text-[11px] text-muted-foreground mt-1">
-                                    {summary?.jumlah_feedback ?? 0} direspons, {summary?.belum_feedback ?? 0} menunggu
+                                    {effectiveSummary?.jumlah_feedback ?? 0} direspons, {effectiveSummary?.belum_feedback ?? 0} menunggu
                                 </div>
                             </AntCard>
 
@@ -734,13 +868,13 @@ export function DealerOverview({
                             <AntCard size="small" className="rounded-xl shadow-2xs border">
                                 <AntStatistic
                                     title="Rata-rata GMB Score"
-                                    value={summary?.gmb_score ?? 0}
+                                    value={effectiveSummary?.gmb_score ?? 0}
                                     precision={2}
                                     prefix="★"
                                     valueStyle={{ color: '#faad14' }}
                                 />
                                 <div className="text-[11px] text-muted-foreground mt-1">
-                                    Kontribusi Bintang 4-5: <strong>{summary?.cont_rating_4_5.toFixed(1) ?? 0}%</strong>
+                                    Kontribusi Bintang 4-5: <strong>{effectiveSummary?.cont_rating_4_5.toFixed(1) ?? 0}%</strong>
                                 </div>
                             </AntCard>
                         </div>
@@ -752,7 +886,7 @@ export function DealerOverview({
                             </h4>
                             <div className="space-y-2">
                                 {sortedDealers.slice(0, 10).map((d) => {
-                                    const maxMonthly = Math.max(...dealers.map((x) => x.review_monthly), 1);
+                                    const maxMonthly = Math.max(...sortedDealers.map((x) => x.review_monthly), 1);
                                     const pctWidth = Math.round((d.review_monthly / maxMonthly) * 100);
 
                                     return (
@@ -761,13 +895,18 @@ export function DealerOverview({
                                             className="rounded-lg border p-3 bg-card hover:bg-muted/30 transition-colors space-y-2"
                                         >
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex flex-wrap items-center gap-2">
                                                     <AntTag className="font-mono text-[11px] font-semibold">
                                                         {d.kode_dealer}
                                                     </AntTag>
                                                     <span className="font-semibold text-foreground">
                                                         {d.nama_dealer}
                                                     </span>
+                                                    {d.type_dealer && (
+                                                        <AntTag color="blue" className="m-0 text-[10px] font-medium">
+                                                            {d.type_dealer}
+                                                        </AntTag>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-3 text-xs">
                                                     <GmbScoreBadge score={d.gmb_score} />

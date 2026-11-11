@@ -14,6 +14,8 @@ interface DealerOverviewPageProps {
     availableMonths: string[];
     activeMonth: string | null;
     selectedDealerId: string;
+    availableTypeDealers?: string[];
+    selectedTypeDealers?: string[];
     isGlobal: boolean;
     userRole: string;
 }
@@ -24,6 +26,8 @@ export default function DealerOverviewPage({
     availableMonths = [],
     activeMonth = null,
     selectedDealerId = '',
+    availableTypeDealers = [],
+    selectedTypeDealers = [],
 }: DealerOverviewPageProps) {
     return (
         <>
@@ -35,6 +39,8 @@ export default function DealerOverviewPage({
                     availableMonths={availableMonths}
                     activeMonth={activeMonth}
                     selectedDealerId={selectedDealerId}
+                    availableTypeDealers={availableTypeDealers}
+                    selectedTypeDealers={selectedTypeDealers}
                 />
             </div>
         </>

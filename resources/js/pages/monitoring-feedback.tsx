@@ -20,6 +20,8 @@ interface MonitoringFeedbackPageProps {
     prevEndDate?: string | null;
     activeRangeLabel?: string | null;
     selectedDealerId: string;
+    availableTypeDealers?: string[];
+    selectedTypeDealers?: string[];
     isGlobal: boolean;
     userRole: string;
 }
@@ -36,6 +38,8 @@ export default function MonitoringFeedbackPage({
     prevEndDate = null,
     activeRangeLabel = null,
     selectedDealerId = '',
+    availableTypeDealers = [],
+    selectedTypeDealers = [],
 }: MonitoringFeedbackPageProps) {
     return (
         <>
@@ -53,6 +57,8 @@ export default function MonitoringFeedbackPage({
                     prevEndDate={prevEndDate}
                     activeRangeLabel={activeRangeLabel}
                     selectedDealerId={selectedDealerId}
+                    availableTypeDealers={availableTypeDealers}
+                    selectedTypeDealers={selectedTypeDealers}
                 />
             </div>
         </>

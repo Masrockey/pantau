@@ -23,6 +23,7 @@ class MonitoringFeedbackController extends Controller
         $selectedMonth = $request->string('month')->trim()->value();
         $startDateParam = $request->string('start_date')->trim()->value();
         $endDateParam = $request->string('end_date')->trim()->value();
+        $rawTypeDealer = $request->input('type_dealer');
 
         $availableMonths = Review::query()
             ->selectRaw('substr(tanggal_publish_review, 1, 7) as ym')
@@ -117,7 +118,11 @@ class MonitoringFeedbackController extends Controller
             }
         }
 
-        $allDealers = $overviewDealersQuery->get(['id', 'kode_dealer', 'nama_dealer', 'star_rate', 'total_review']);
+        $availableTypeDealers = $this->resolveAvailableTypeDealers($overviewDealersQuery);
+        $selectedTypeDealers = $this->parseTypeDealerFilters($rawTypeDealer, $availableTypeDealers);
+        $this->applyTypeDealerFilters($overviewDealersQuery, $selectedTypeDealers);
+
+        $allDealers = $overviewDealersQuery->get(['id', 'kode_dealer', 'nama_dealer', 'type_dealer', 'star_rate', 'total_review']);
 
         $monthlyReviews = $monthlyReviewsQuery->get([
             'id',
@@ -185,6 +190,7 @@ class MonitoringFeedbackController extends Controller
                 'id' => $dealer->id,
                 'kode_dealer' => $dealer->kode_dealer,
                 'nama_dealer' => $dealer->nama_dealer,
+                'type_dealer' => $dealer->type_dealer,
                 'gmb_score' => $dealer->star_rate !== null ? (float) $dealer->star_rate : null,
                 'rating_1_3' => $r13,
                 'rating_4_5' => $r45,
@@ -257,6 +263,8 @@ class MonitoringFeedbackController extends Controller
             'prevEndDate' => $prevEndDate,
             'activeRangeLabel' => $activeRangeLabel,
             'selectedDealerId' => $dealerScopeId ? (string) $dealerScopeId : '',
+            'availableTypeDealers' => $availableTypeDealers,
+            'selectedTypeDealers' => $selectedTypeDealers,
             'isGlobal' => $isGlobal,
             'userRole' => $user?->role?->value ?? (string) ($user?->role ?? ''),
         ]);
