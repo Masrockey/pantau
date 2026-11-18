@@ -193,4 +193,4 @@ Contributions, bug reports, and pull requests from the community are warmly welc
 
 ## License
 
-Pantau is an open-source software project licensed under the [MIT License](https://opensource.org/licenses/MIT). You are free to inspect, modify, and distribute it in accordance with the license conditions.
+Pantau is open-source software licensed under the [GNU Affero General Public License v3.0 (GNU AGPLv3)](https://www.gnu.org/licenses/agpl-3.0.en.html). Under this license, any modifications or networked deployments must also remain open and be made available under the same AGPLv3 terms. See the [LICENSE](LICENSE) file for more details.
